@@ -1,0 +1,50 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UseWPF>true</UseWPF>
+		<Authors>Theo Stracke</Authors>
+		<Company>TS Builds</Company>
+		<Product>BarTender Plus</Product>
+		<PackageIcon>favicon.ico</PackageIcon>
+		<ApplicationIcon>favicon.ico</ApplicationIcon>
+		<Copyright>EULA</Copyright>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="appsettings.json" />
+    <None Remove="favicon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.*" />
+		<PackageReference Include="Dapper" Version="2.1.*" />
+		<PackageReference Include="ClosedXML" Version="0.102.*" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.*" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.*" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.*" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.*" />
+		<PackageReference Include="MaterialDesignThemes" Version="4.8.*" />
+		<PackageReference Include="MaterialDesignColors" Version="2.1.*" />
+		<PackageReference Include="Photino.NET" Version="4.0.16" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Resource Include="favicon.ico">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </Resource>
+	</ItemGroup>
+
+</Project>
