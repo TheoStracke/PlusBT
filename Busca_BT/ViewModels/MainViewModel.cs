@@ -14,6 +14,7 @@ namespace Busca_BT.ViewModels
         public ICommand ShowHistoricoCommand { get; }
         public ICommand ShowHomeCommand { get; }
         public ICommand ShowHelpCommand { get; }
+        public ICommand ShowSettingsCommand { get; }
 
         public MainViewModel(INavigationService navigation)
         {
@@ -24,6 +25,7 @@ namespace Busca_BT.ViewModels
             ShowTemplatesCommand = new Infrastructure.RelayCommand(() => _navigation.NavigateTo<TemplateUpdateViewModel>());
             ShowHistoricoCommand = new Infrastructure.RelayCommand(() => _navigation.NavigateTo<HistoricoViewModel>());
             ShowHelpCommand = new Infrastructure.RelayCommand(() => _navigation.NavigateTo<HelpViewModel>());
+            ShowSettingsCommand = new Infrastructure.RelayCommand(() => _navigation.NavigateTo<SettingsViewModel>());
 
             // Start with Home
             _navigation.NavigateTo<HomeViewModel>();

@@ -12,9 +12,18 @@ namespace Busca_BT.Infrastructure
             this IServiceCollection services,
             IConfiguration configuration)
         {
-            services.AddSingleton(new DatabaseOptions
+            services.AddSingleton<IConnectionSettingsStore, ConnectionSettingsStore>();
+
+            services.AddSingleton(sp =>
             {
-                ConnectionString = configuration.GetSection(DatabaseOptions.Section)["ConnectionString"] ?? string.Empty
+                var settings = sp.GetRequiredService<IConnectionSettingsStore>().Load();
+                var connectionString = settings.BuildConnectionString();
+                return new DatabaseOptions
+                {
+                    ConnectionString = connectionString,
+                    ActiveConnectionString = connectionString,
+                    AutoDiscover = settings.AutoDiscover
+                };
             });
 
             services.AddSingleton(new EtiquetasOptions
@@ -26,11 +35,12 @@ namespace Busca_BT.Infrastructure
                 configuration.GetSection(BartenderOptions.Section));
 
             services.AddSingleton<IDbConnectionFactory, SqlServerConnectionFactory>();
+            services.AddSingleton<ISqlServerDiscoveryService, SqlServerDiscoveryService>();
             services.AddSingleton<DatabaseInitializer>();
 
-            services.AddScoped<ILabelRepository, LabelRepository>();
-            services.AddScoped<IExcelImportService, ExcelImportService>();
-            services.AddScoped<IFileUpdateService, FileUpdateService>();
+            services.AddSingleton<ILabelRepository, LabelRepository>();
+            services.AddSingleton<IExcelImportService, ExcelImportService>();
+            services.AddSingleton<IFileUpdateService, FileUpdateService>();
             services.AddSingleton<IBartenderService, BartenderService>();
             services.AddSingleton<IBartenderLocator, BartenderLocator>();
 
