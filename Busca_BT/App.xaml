@@ -1,17 +1,16 @@
 <Application x:Class="Busca_BT.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
 	<Application.Resources>
 		<ResourceDictionary>
-			<!-- 1. Primeiro as mesclagens (Material Design) -->
+			<!-- 1. Dicionários de tema do WPF-UI (Fluent) -->
 			<ResourceDictionary.MergedDictionaries>
-				<ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Light.xaml" />
-				<ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Defaults.xaml" />
-				<ResourceDictionary Source="pack://application:,,,/MaterialDesignColors;component/Themes/Recommended/Primary/MaterialDesignColor.Blue.xaml" />
+				<ui:ThemesDictionary Theme="Light" />
+				<ui:ControlsDictionary />
 			</ResourceDictionary.MergedDictionaries>
 
-			<!-- 2. Depois vêm os seus conversores e estilos próprios -->
+			<!-- 2. Conversores próprios -->
 			<BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
 		</ResourceDictionary>

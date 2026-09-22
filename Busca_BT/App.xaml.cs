@@ -22,10 +22,53 @@ namespace Busca_BT
         {
             Startup += Application_Startup;
             Exit += Application_Exit;
+            DispatcherUnhandledException += App_DispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += AppDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+        }
+
+        private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+        {
+            MessageBox.Show(
+                $"Ocorreu um erro inesperado:\n\n{e.Exception.Message}",
+                "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            e.Handled = true;
+        }
+
+        private void AppDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            if (e.ExceptionObject is Exception ex)
+                MessageBox.Show(
+                    $"Ocorreu um erro fatal:\n\n{ex.Message}",
+                    "Erro fatal", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            e.SetObserved();
         }
 
         private async void Application_Startup(object sender, StartupEventArgs e)
         {
+            try
+            {
+                await RunStartupAsync(e);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Não foi possível iniciar o aplicativo:\n\n{ex.Message}",
+                    "Erro ao iniciar", MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown(-1);
+            }
+        }
+
+        private async Task RunStartupAsync(StartupEventArgs e)
+        {
+            Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
+                Wpf.Ui.Appearance.ApplicationTheme.Light,
+                Wpf.Ui.Controls.WindowBackdropType.Mica);
+
             _host = Host.CreateDefaultBuilder(e.Args)
                 .ConfigureServices((context, services) =>
                 {
@@ -49,6 +92,7 @@ namespace Busca_BT
                     services.AddTransient<HistoricoWindow>();
                     services.AddTransient<HomeView>();
                     services.AddTransient<HelpView>();
+                    services.AddTransient<SettingsView>();
 
                     // Register ViewModels
                     services.AddSingleton<MainViewModel>();
@@ -56,14 +100,15 @@ namespace Busca_BT
                     services.AddTransient<HistoricoViewModel>();
                     services.AddTransient<HomeViewModel>();
                     services.AddTransient<HelpViewModel>();
+                    services.AddTransient<SettingsViewModel>();
 
                     services.AddTransient<MainWindow>();
                 })
                 .Build();
 
-            await AppStartup.InitializeDatabaseAsync(_host.Services);
-
             ServiceProvider = _host.Services;
+
+            var dbReady = await TryInitializeDatabaseAsync();
 
             // Configure navigation maps
             var nav = ServiceProvider.GetRequiredService<INavigationService>();
@@ -71,6 +116,7 @@ namespace Busca_BT
             nav.MapsTo<HistoricoViewModel, HistoricoWindow>();
             nav.MapsTo<HomeViewModel, HomeView>();
             nav.MapsTo<HelpViewModel, HelpView>();
+            nav.MapsTo<SettingsViewModel, SettingsView>();
 
             // Register converters in Application resources so XAML can reference by key
             Current.Resources["NullToVisibilityConverter"] = new NullToVisibilityConverter();
@@ -79,6 +125,30 @@ namespace Busca_BT
 
             var mainWindow = ServiceProvider.GetRequiredService<MainWindow>();
             mainWindow.Show();
+
+            if (!dbReady)
+            {
+                nav.NavigateTo<SettingsViewModel>();
+                MessageBox.Show(
+                    "Não foi possível conectar ao banco de dados configurado.\n\n" +
+                    "Ajuste o servidor na aba Configurações e clique em Salvar.",
+                    "Conexão indisponível", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async Task<bool> TryInitializeDatabaseAsync()
+        {
+            try
+            {
+                await AppStartup.InitializeDatabaseAsync(ServiceProvider);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ServiceProvider.GetRequiredService<ILogger<App>>()
+                    .LogCritical(ex, "Falha ao conectar no banco de dados durante o startup.");
+                return false;
+            }
         }
 
         private async void Application_Exit(object sender, ExitEventArgs e)

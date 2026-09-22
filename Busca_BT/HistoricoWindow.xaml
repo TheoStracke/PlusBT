@@ -1,179 +1,68 @@
 <UserControl x:Class="Busca_BT.HistoricoWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Background="#F8FAFC"
-        FontFamily="Segoe UI">
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
 
-    <UserControl.Resources>
-        <Style x:Key="BtnSharpIndustrial" TargetType="Button">
-            <Setter Property="Background" Value="#334155"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="24,10"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                CornerRadius="0">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#0F172A"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="BtnSharpOutline" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#334155"/>
-            <Setter Property="BorderBrush" Value="#94A3B8"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="16,8"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="0">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#F1F5F9"/>
-                                <Setter Property="BorderBrush" Value="#475569"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="BtnSharpDanger" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#DC2626"/>
-            <Setter Property="BorderBrush" Value="#DC2626"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="12,6"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="0">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#FEF2F2"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </UserControl.Resources>
-
-    <Grid Margin="32">
+    <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="HISTÓRICO DE IMPORTAÇÕES"
-                   FontSize="20" FontWeight="Bold" Foreground="#0F172A" 
-                   Margin="0,0,0,24"/>
+        <TextBlock Grid.Row="0" Text="Histórico de Importações"
+                   FontSize="24" FontWeight="SemiBold"
+                   Margin="0,0,0,16"/>
 
-        <DataGrid Grid.Row="1"
-                  x:Name="GridHistorico"
-                  ItemsSource="{Binding Batches}"
-                  AutoGenerateColumns="False"
-                  CanUserAddRows="False"
-                  IsReadOnly="True"
-                  SelectionMode="Single"
-                  Background="#FFFFFF"
-                  RowBackground="#FFFFFF"
-                  AlternatingRowBackground="#F1F5F9"
-                  BorderBrush="#E2E8F0"
-                  BorderThickness="1"
-                  HeadersVisibility="Column"
-                  GridLinesVisibility="Horizontal"
-                  HorizontalGridLinesBrush="#E2E8F0"
-                  VerticalGridLinesBrush="Transparent">
+        <Border Grid.Row="1" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+            <ui:DataGrid x:Name="GridHistorico"
+                         ItemsSource="{Binding Batches}"
+                         AutoGenerateColumns="False"
+                         CanUserAddRows="False"
+                         IsReadOnly="True"
+                         SelectionMode="Single"
+                         GridLinesVisibility="Horizontal">
 
-            <DataGrid.Resources>
-                <Style TargetType="DataGridColumnHeader">
-                    <Setter Property="Background" Value="#F8FAFC"/>
-                    <Setter Property="Foreground" Value="#64748B"/>
-                    <Setter Property="FontWeight" Value="SemiBold"/>
-                    <Setter Property="Padding" Value="16,12"/>
-                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
-                </Style>
-                <Style TargetType="DataGridCell">
-                    <Setter Property="Padding" Value="16,10"/>
-                    <Setter Property="Foreground" Value="#334155"/>
-                    <Setter Property="BorderThickness" Value="0"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="DataGridCell">
-                                <Border Padding="{TemplateBinding Padding}" 
-                                        Background="{TemplateBinding Background}">
-                                    <ContentPresenter VerticalAlignment="Center"/>
-                                </Border>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ARQUIVO"
+                                        Binding="{Binding FileName}"
+                                        Width="*"/>
+                    <DataGridTextColumn Header="DATA"
+                                        Binding="{Binding ImportedAt, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}"
+                                        Width="160"/>
+                    <DataGridTextColumn Header="IMPORTADOS"
+                                        Binding="{Binding ImportedRows}"
+                                        Width="120"/>
+                    <DataGridTextColumn Header="IGNORADOS"
+                                        Binding="{Binding SkippedRows}"
+                                        Width="120"/>
+                    <DataGridTemplateColumn Header="AÇÃO" Width="120">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ui:Button Content="Excluir"
+                                           Appearance="Danger"
+                                           Padding="10,4"
+                                           Command="{Binding DataContext.DeleteBatchCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                           CommandParameter="{Binding}"
+                                           IsEnabled="{Binding Converter={StaticResource NotNullToBoolConverter}}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </ui:DataGrid>
+        </Border>
 
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="ARQUIVO" 
-                                    Binding="{Binding FileName}" 
-                                    Width="*"/>
-                <DataGridTextColumn Header="DATA" 
-                                    Binding="{Binding ImportedAt, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}" 
-                                    Width="160"/>
-                <DataGridTextColumn Header="IMPORTADOS" 
-                                    Binding="{Binding ImportedRows}" 
-                                    Width="120"/>
-                <DataGridTextColumn Header="IGNORADOS" 
-                                    Binding="{Binding SkippedRows}" 
-                                    Width="120"/>
-                <DataGridTemplateColumn Header="AÇÃO" Width="120">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Button Content="EXCLUIR"
-                                    Style="{StaticResource BtnSharpDanger}"
-                                    Command="{Binding DataContext.DeleteBatchCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding}"
-                                    IsEnabled="{Binding Converter={StaticResource NotNullToBoolConverter}}"/>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-            </DataGrid.Columns>
-        </DataGrid>
-
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
-            <Button Content="ANTERIOR" Width="120" Height="36" Style="{StaticResource BtnSharpOutline}" Command="{Binding PreviousPageCommand}" Margin="0,0,8,0" />
-            <TextBlock VerticalAlignment="Center" Margin="8,0" Text="{Binding PageDisplay}" />
-            <Button Content="PRÓXIMA" Width="120" Height="36" Style="{StaticResource BtnSharpIndustrial}" Command="{Binding NextPageCommand}" Margin="8,0" />
-            <Button Content="FECHAR" Width="120" Height="36" Style="{StaticResource BtnSharpOutline}" Command="{Binding CloseCommand}" Margin="8,0,0,0"/>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <ui:Button Content="Anterior" Appearance="Secondary"
+                       Icon="{ui:SymbolIcon ArrowLeft24}"
+                       Command="{Binding PreviousPageCommand}" Margin="0,0,8,0"/>
+            <TextBlock VerticalAlignment="Center" Margin="8,0" Text="{Binding PageDisplay}"/>
+            <ui:Button Content="Próxima" Appearance="Secondary"
+                       Icon="{ui:SymbolIcon ArrowRight24}"
+                       Command="{Binding NextPageCommand}" Margin="8,0"/>
+            <ui:Button Content="Fechar" Appearance="Transparent"
+                       Command="{Binding CloseCommand}" Margin="8,0,0,0"/>
         </StackPanel>
     </Grid>
 </UserControl>

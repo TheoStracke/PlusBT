@@ -1,166 +1,9 @@
 <UserControl x:Class="Busca_BT.TemplateUpdateWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Background="#FFFFFF"
-        FontFamily="Segoe UI">
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
 
-    <UserControl.Resources>
-
-        <!-- ── Botão header (branco contornado) ────────────────────────────── -->
-        <Style x:Key="BtnHeaderOutline" TargetType="Button">
-            <Setter Property="Background"       Value="Transparent"/>
-            <Setter Property="Foreground"       Value="White"/>
-            <Setter Property="BorderBrush"      Value="White"/>
-            <Setter Property="BorderThickness"  Value="1"/>
-            <Setter Property="Padding"          Value="12,8"/>
-            <Setter Property="FontWeight"       Value="SemiBold"/>
-            <Setter Property="Cursor"           Value="Hand"/>
-            <Setter Property="FontSize"         Value="12"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="0">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="White"/>
-                                <Setter Property="Foreground" Value="#0F172A"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.35"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- ── Botão accent (ação positiva no header) ──────────────────────── -->
-        <Style x:Key="BtnHeaderAccent" TargetType="Button">
-            <Setter Property="Background"       Value="#3B82F6"/>
-            <Setter Property="Foreground"       Value="White"/>
-            <Setter Property="BorderThickness"  Value="0"/>
-            <Setter Property="Padding"          Value="14,8"/>
-            <Setter Property="FontWeight"       Value="Bold"/>
-            <Setter Property="Cursor"           Value="Hand"/>
-            <Setter Property="FontSize"         Value="12"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="0">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#2563EB"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.35"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- ── TextBox global ───────────────────────────────────────────────── -->
-        <Style TargetType="TextBox">
-            <Setter Property="Padding"          Value="10,0"/>
-            <Setter Property="BorderBrush"      Value="#CBD5E1"/>
-            <Setter Property="BorderThickness"  Value="1"/>
-            <Setter Property="Foreground"       Value="#334155"/>
-            <Setter Property="FontSize"         Value="13"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border Background="White"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="0">
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsFocused" Value="True">
-                                <Setter Property="BorderBrush" Value="#0F172A"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- ── Botão footer outline ─────────────────────────────────────────── -->
-        <Style x:Key="BtnFooterOutline" TargetType="Button">
-            <Setter Property="Background"       Value="Transparent"/>
-            <Setter Property="Foreground"       Value="#334155"/>
-            <Setter Property="BorderBrush"      Value="#94A3B8"/>
-            <Setter Property="BorderThickness"  Value="1"/>
-            <Setter Property="Padding"          Value="20,9"/>
-            <Setter Property="FontWeight"       Value="SemiBold"/>
-            <Setter Property="Cursor"           Value="Hand"/>
-            <Setter Property="FontSize"         Value="12"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="0">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background"   Value="#F1F5F9"/>
-                                <Setter Property="BorderBrush"  Value="#475569"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- ── Botão footer primário ────────────────────────────────────────── -->
-        <Style x:Key="BtnFooterPrimary" TargetType="Button">
-            <Setter Property="Background"       Value="#0F172A"/>
-            <Setter Property="Foreground"       Value="White"/>
-            <Setter Property="BorderThickness"  Value="0"/>
-            <Setter Property="Padding"          Value="20,9"/>
-            <Setter Property="FontWeight"       Value="SemiBold"/>
-            <Setter Property="Cursor"           Value="Hand"/>
-            <Setter Property="FontSize"         Value="12"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="0">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#1E293B"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Background" Value="#94A3B8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-    </UserControl.Resources>
-
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- LAYOUT RAIZ                                                        -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <Grid>
+    <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>  <!-- Header -->
             <RowDefinition Height="Auto"/>  <!-- Barra de busca -->
@@ -169,159 +12,70 @@
         </Grid.RowDefinitions>
 
         <!-- ── HEADER ────────────────────────────────────────────────────── -->
-        <Border Grid.Row="0" Background="#0F172A" Padding="24,14">
-            <DockPanel LastChildFill="False">
+        <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,16">
+            <TextBlock DockPanel.Dock="Left"
+                       Text="Gerenciamento de Etiquetas"
+                       FontSize="24" FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
 
-                <!-- Título -->
-                <TextBlock DockPanel.Dock="Left"
-                           Text="GERENCIAMENTO DE ETIQUETAS"
-                           FontSize="17" FontWeight="Bold" Foreground="White"
-                           VerticalAlignment="Center"/>
-
-                <!-- Ações do header (direita) -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-
-                    <!-- ★ SINCRONIZAR NOVA PASTA (destaque) -->
-                    <Button Style="{StaticResource BtnHeaderAccent}"
-                            Content="⇄  SINCRONIZAR PASTA"
-                            ToolTip="Copia os .btw para a pasta centralizada e atualiza o banco"
-                            Width="170"
-                            Margin="0,0,8,0"
-                            Command="{Binding SyncNewFolderCommand}"/>
-
-                    <Button Style="{StaticResource BtnHeaderOutline}"
-                            Content="IMPORTAR PASTA"
-                            ToolTip="Associa os .btw de uma pasta sem copiar os arquivos"
-                            Width="130"
-                            Margin="0,0,8,0"
-                            Command="{Binding ImportFolderCommand}"/>
-
-                    <Button Style="{StaticResource BtnHeaderOutline}"
-                            Content="IMPORTAR ARQUIVO"
-                            Width="130"
-                            Margin="0,0,8,0"
-                            Command="{Binding AddSingleTemplateCommand}"/>
-
-                    <Button Style="{StaticResource BtnHeaderOutline}"
-                            Content="FECHAR"
-                            Width="80"
-                            Command="{Binding CloseCommand}"/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <ui:Button Content="Sincronizar pasta"
+                           ToolTip="Copia os .btw para a pasta centralizada e atualiza o banco"
+                           Icon="{ui:SymbolIcon ArrowSync24}"
+                           Appearance="Primary"
+                           Margin="0,0,8,0"
+                           Command="{Binding SyncNewFolderCommand}"/>
+                <ui:Button Content="Importar pasta"
+                           ToolTip="Associa os .btw de uma pasta sem copiar os arquivos"
+                           Icon="{ui:SymbolIcon FolderArrowUp24}"
+                           Appearance="Secondary"
+                           Margin="0,0,8,0"
+                           Command="{Binding ImportFolderCommand}"/>
+                <ui:Button Content="Importar arquivo"
+                           Icon="{ui:SymbolIcon DocumentArrowUp24}"
+                           Appearance="Secondary"
+                           Margin="0,0,8,0"
+                           Command="{Binding AddSingleTemplateCommand}"/>
+                <ui:Button Content="Fechar"
+                           Appearance="Transparent"
+                           Command="{Binding CloseCommand}"/>
+            </StackPanel>
+        </DockPanel>
 
         <!-- ── BARRA DE BUSCA ─────────────────────────────────────────────── -->
-        <Border Grid.Row="1" Background="#F8FAFC"
-                BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
-                Padding="24,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-                <!-- Campo de busca com ícone -->
-                <Grid Grid.Column="0" MaxWidth="480" HorizontalAlignment="Left">
-                    <TextBox x:Name="TxtSearch"
-                             Height="36"
-                             Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
-                             Padding="36,0,10,0"/>
-                    <!-- Ícone lupa sobreposto -->
-                    <TextBlock Text="🔍"
-                               Foreground="#94A3B8"
-                               FontSize="14"
-                               Margin="10,0,0,0"
-                               VerticalAlignment="Center"
-                               IsHitTestVisible="False"/>
-                    <!-- Placeholder -->
-                    <TextBlock Text="Buscar por código, descrição ou arquivo…"
-                               Foreground="#CBD5E1"
-                               FontSize="13"
-                               Margin="36,0,0,0"
-                               VerticalAlignment="Center"
-                               IsHitTestVisible="False">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SearchTerm}" Value="">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                </Grid>
+            <ui:TextBox Grid.Column="0" MaxWidth="480" HorizontalAlignment="Left"
+                        PlaceholderText="Buscar por código, descrição ou arquivo…"
+                        Icon="{ui:SymbolIcon Search24}"
+                        Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"/>
 
-                <!-- Contagem de resultados -->
-                <TextBlock Grid.Column="1"
-                           VerticalAlignment="Center"
-                           Margin="16,0,0,0"
-                           FontSize="12"
-                           Foreground="#64748B">
-                    <Run Text="{Binding Templates.Count, Mode=OneWay}"/>
-                    <Run Text=" resultado(s)"/>
-                </TextBlock>
-            </Grid>
-        </Border>
+            <TextBlock Grid.Column="1"
+                       VerticalAlignment="Center"
+                       Margin="16,0,0,0"
+                       FontSize="12"
+                       Opacity="0.65">
+                <Run Text="{Binding Templates.Count, Mode=OneWay}"/>
+                <Run Text=" resultado(s)"/>
+            </TextBlock>
+        </Grid>
 
         <!-- ── GRID DE TEMPLATES ──────────────────────────────────────────── -->
-        <Border Grid.Row="2" BorderBrush="#E2E8F0" BorderThickness="0">
-            <DataGrid x:Name="GridTemplates"
-                      ItemsSource="{Binding Templates}"
-                      SelectedItem="{Binding Selected, Mode=TwoWay}"
-                      AutoGenerateColumns="False"
-                      CanUserAddRows="False"
-                      IsReadOnly="True"
-                      SelectionMode="Single"
-                      Background="#FFFFFF"
-                      RowBackground="#FFFFFF"
-                      AlternatingRowBackground="#F8FAFC"
-                      BorderThickness="0"
-                      HeadersVisibility="Column"
-                      GridLinesVisibility="Horizontal"
-                      HorizontalGridLinesBrush="#E2E8F0"
-                      VerticalGridLinesBrush="Transparent"
-                      MouseDoubleClick="GridTemplates_MouseDoubleClick">
-
-                <DataGrid.Resources>
-                    <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background"       Value="#F1F5F9"/>
-                        <Setter Property="Foreground"       Value="#64748B"/>
-                        <Setter Property="FontWeight"       Value="SemiBold"/>
-                        <Setter Property="Padding"          Value="16,12"/>
-                        <Setter Property="BorderThickness"  Value="0,0,0,1"/>
-                        <Setter Property="BorderBrush"      Value="#CBD5E1"/>
-                        <Setter Property="FontSize"         Value="11"/>
-                    </Style>
-                    <Style TargetType="DataGridRow">
-                        <Setter Property="Cursor" Value="Hand"/>
-                        <Style.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#EFF6FF"/>
-                            </Trigger>
-                            <EventTrigger RoutedEvent="MouseEnter">
-                                <!-- hover gerenciado pelo AlternatingRowBackground -->
-                            </EventTrigger>
-                        </Style.Triggers>
-                    </Style>
-                    <Style TargetType="DataGridCell">
-                        <Setter Property="Padding"          Value="0"/>
-                        <Setter Property="BorderThickness"  Value="0"/>
-                        <Setter Property="Foreground"       Value="#334155"/>
-                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="DataGridCell">
-                                    <Border Padding="16,10"
-                                            Background="{TemplateBinding Background}">
-                                        <ContentPresenter VerticalAlignment="Center"/>
-                                    </Border>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </DataGrid.Resources>
+        <Border Grid.Row="2" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+            <ui:DataGrid x:Name="GridTemplates"
+                         ItemsSource="{Binding Templates}"
+                         SelectedItem="{Binding Selected, Mode=TwoWay}"
+                         AutoGenerateColumns="False"
+                         CanUserAddRows="False"
+                         IsReadOnly="True"
+                         SelectionMode="Single"
+                         GridLinesVisibility="Horizontal"
+                         MouseDoubleClick="GridTemplates_MouseDoubleClick">
 
                 <DataGrid.Columns>
 
@@ -329,7 +83,7 @@
                     <DataGridTemplateColumn Header="CÓDIGO" Width="150">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding Codigo}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Codigo}" VerticalAlignment="Center" Margin="12,0"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -338,7 +92,7 @@
                     <DataGridTemplateColumn Header="DESCRIÇÃO" Width="*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding DescricaoAnvisa}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding DescricaoAnvisa}" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -347,7 +101,7 @@
                     <DataGridTemplateColumn Header="ARQUIVO .BTW" Width="220">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding NomeArquivo}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding NomeArquivo}" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -356,85 +110,75 @@
                     <DataGridTemplateColumn Header="ÚLTIMA ATUALIZAÇÃO" Width="160">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding UpdatedAtFormatado}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding UpdatedAtFormatado}" VerticalAlignment="Center" Margin="12,0"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
-                    <!-- 5. STATUS COLORIDO (Mantido do seu original) -->
+                    <!-- 5. STATUS COLORIDO -->
                     <DataGridTemplateColumn Header="STATUS" Width="120">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding StatusTexto}"
-                           Foreground="{Binding StatusCor}"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"/>
+                                           Foreground="{Binding StatusCor}"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="12,0"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
-                    <!-- 6. BOTÃO DE AÇÃO RÁPIDA (Mantido do seu original) -->
-                    <DataGridTemplateColumn Header="" Width="80">
+                    <!-- 6. BOTÃO DE AÇÃO RÁPIDA -->
+                    <DataGridTemplateColumn Header="" Width="90">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Button Content="Abrir"
-                        Visibility="{Binding TemArquivo, Converter={StaticResource BoolToVisibilityConverter}}"
-                        FontSize="11" Padding="8,4"
-                        Background="Transparent"
-                        Foreground="#2563EB"
-                        BorderBrush="#BFDBFE"
-                        BorderThickness="1"
-                        Cursor="Hand"
-                        Tag="{Binding}"
-                        Click="BtnAbrirRow_Click"/>
+                                <ui:Button Content="Abrir"
+                                           Visibility="{Binding TemArquivo, Converter={StaticResource BoolToVisibilityConverter}}"
+                                           Appearance="Secondary"
+                                           Padding="10,4"
+                                           Tag="{Binding}"
+                                           Click="BtnAbrirRow_Click"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
                 </DataGrid.Columns>
-            </DataGrid>
+            </ui:DataGrid>
         </Border>
 
         <!-- ── FOOTER ─────────────────────────────────────────────────────── -->
-        <Border Grid.Row="3" Background="#F8FAFC"
-                BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"
-                Padding="24,14">
-            <DockPanel LastChildFill="False">
+        <Grid Grid.Row="3" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-                <!-- Status / mensagem -->
-                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
-                    <TextBlock Text="STATUS"
-                               FontSize="10" FontWeight="SemiBold"
-                               Foreground="#64748B" Margin="0,0,0,3"/>
-                    <TextBlock Text="{Binding StatusText}"
-                               FontSize="12" Foreground="#334155"
-                               TextWrapping="Wrap" MaxWidth="500"/>
-                </StackPanel>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="STATUS" FontSize="10" FontWeight="SemiBold" Opacity="0.6" Margin="0,0,0,3"/>
+                <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap" MaxWidth="500"/>
+            </StackPanel>
 
-                <!-- Ações sobre o item selecionado -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Style="{StaticResource BtnFooterOutline}"
-                            Content="✎  SALVAR / SUBSTITUIR ARQUIVO"
-                            ToolTip="Escolhe um novo .btw e substitui o arquivo associado ao item selecionado"
-                            Margin="0,0,8,0"
-                            Command="{Binding SaveLabelCommand}"/>
-                    <Button Style="{StaticResource BtnFooterPrimary}"
-                            Content="▶  ABRIR ETIQUETA"
-                            ToolTip="Abre o .btw no BarTender para edição (duplo clique na linha também funciona)"
-                            Command="{Binding OpenLabelCommand}"/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <ui:Button Content="Salvar / substituir arquivo"
+                           ToolTip="Escolhe um novo .btw e substitui o arquivo associado ao item selecionado"
+                           Icon="{ui:SymbolIcon Save24}"
+                           Appearance="Secondary"
+                           Margin="0,0,8,0"
+                           Command="{Binding SaveLabelCommand}"/>
+                <ui:Button Content="Abrir etiqueta"
+                           ToolTip="Abre o .btw no BarTender para edição (duplo clique na linha também funciona)"
+                           Icon="{ui:SymbolIcon Open24}"
+                           Appearance="Primary"
+                           Command="{Binding OpenLabelCommand}"/>
+            </StackPanel>
+        </Grid>
 
         <!-- Overlay de carregamento -->
         <Grid Grid.RowSpan="4"
               Background="#80000000"
-              Visibility="{Binding IsBusy,
-                  Converter={StaticResource BoolToVisibilityConverter}}">
+              Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Text="Aguarde…"
-                           Foreground="White" FontSize="16"
-                           FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <ui:ProgressRing IsIndeterminate="True" Width="48" Height="48" Margin="0,0,0,12"/>
+                <TextBlock Text="Aguarde…" Foreground="White" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
             </StackPanel>
         </Grid>
     </Grid>

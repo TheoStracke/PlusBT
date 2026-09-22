@@ -12,7 +12,7 @@ using System.Windows.Data;
 
 namespace Busca_BT;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     public MainWindow(ViewModels.MainViewModel viewModel)
     {

@@ -72,6 +72,12 @@ namespace Busca_BT.ViewModels
         public string StatSemArquivo => _allRecords.Count(l => !l.HasFile).ToString();
         public string StatImportacoes => _allBatches.Count.ToString();
 
+        private int _statInvoicesValue;
+        public string StatInvoices => _statInvoicesValue.ToString();
+
+        private int _statFolhasValue;
+        public string StatFolhas => _statFolhasValue.ToString();
+
         public ICommand LoadCommand { get; }
         public ICommand ImportCommand { get; }
         public ICommand OpenCommand { get; }
@@ -143,11 +149,20 @@ namespace Busca_BT.ViewModels
             var termo = SearchTerm?.Trim() ?? string.Empty;
             var batchId = SelectedBatch?.Id;
 
-            var filtrado = _allRecords.AsEnumerable();
-
+            var doLote = _allRecords.AsEnumerable();
             if (batchId.HasValue)
-                filtrado = filtrado.Where(l => l.BatchId == batchId.Value);
+                doLote = doLote.Where(l => l.BatchId == batchId.Value);
+            doLote = doLote.ToList();
 
+            // Folhas de espelho: contadas por invoice DISTINTO, escopadas ao lote
+            // selecionado (não ao texto de busca, para o número não oscilar
+            // enquanto o usuário procura um item específico).
+            _statInvoicesValue = doLote.Select(l => l.Invoice).Distinct().Count();
+            _statFolhasValue = EspelhoCalculator.CalcularFolhas(_statInvoicesValue);
+            RaisePropertyChanged(nameof(StatInvoices));
+            RaisePropertyChanged(nameof(StatFolhas));
+
+            var filtrado = doLote;
             if (!string.IsNullOrEmpty(termo))
                 filtrado = filtrado.Where(l =>
                     l.Invoice.Contains(termo, StringComparison.OrdinalIgnoreCase) ||

@@ -26,7 +26,7 @@ public partial class TemplateUpdateWindow : UserControl
     // Botão "Abrir" inline na coluna — seleciona a linha e dispara o comando
     private void BtnAbrirRow_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: ViewModels.TemplateItem item })
+        if (sender is Wpf.Ui.Controls.Button { Tag: ViewModels.TemplateItem item })
         {
             _vm.Selected = item;
             if (_vm.OpenLabelCommand.CanExecute(null))
