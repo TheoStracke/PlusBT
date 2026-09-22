@@ -101,7 +101,7 @@ namespace Busca_BT.Services
         {
             try
             {
-                var key = Registry.LocalMachine.OpenSubKey(RegistryKeyBartender);
+                using var key = Registry.LocalMachine.OpenSubKey(RegistryKeyBartender);
                 if (key is null)
                 {
                     LogRegistryKeyNotFound(logger, RegistryKeyBartender);

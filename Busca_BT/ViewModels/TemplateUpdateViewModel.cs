@@ -141,7 +141,6 @@ public sealed partial class TemplateUpdateViewModel : ObservableObject
             ? _allItems
             : _allItems.Where(i =>
                 i.Codigo.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                i.DescricaoAnvisa.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                 i.NomeArquivo.Contains(term, StringComparison.OrdinalIgnoreCase));
 
         Templates = new ObservableCollection<TemplateItem>(filtered);

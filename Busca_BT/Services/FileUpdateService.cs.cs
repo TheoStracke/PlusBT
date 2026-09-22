@@ -100,7 +100,8 @@ public sealed class FileUpdateService : IFileUpdateService
         string filePath, CancellationToken ct)
     {
         await using var stream = File.OpenRead(filePath);
-        var bytes = await SHA256.Create().ComputeHashAsync(stream, ct);
+        using var sha256 = SHA256.Create();
+        var bytes = await sha256.ComputeHashAsync(stream, ct);
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 }

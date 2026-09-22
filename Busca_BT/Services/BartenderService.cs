@@ -156,7 +156,7 @@ namespace Busca_BT.Services
 
                 LogProcessStarting(logger, _options.ExecutablePath, arguments);
 
-                var process = Process.Start(psi)
+                using var process = Process.Start(psi)
                     ?? throw new InvalidOperationException("Process.Start retornou null.");
 
                 if (_options.StartupTimeoutMs > 0)
@@ -182,7 +182,7 @@ namespace Busca_BT.Services
                     UseShellExecute = true
                 };
 
-                var process = await Task.Run(() => Process.Start(psi));
+                using var process = await Task.Run(() => Process.Start(psi));
                 return process is null
                     ? BartenderResult.Fail("Não foi possível abrir o arquivo.")
                     : BartenderResult.Ok(process.Id);
