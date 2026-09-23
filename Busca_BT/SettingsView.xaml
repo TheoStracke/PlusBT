@@ -27,11 +27,35 @@
                 <TextBlock Text="Banco de dados" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
                 <ui:TextBox Text="{Binding Database, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
 
+                <CheckBox Content="Usar autenticação do Windows (sem usuário/senha do SQL)"
+                          IsChecked="{Binding UseWindowsAuth}"
+                          FontSize="12" Margin="0,0,0,16"/>
+
                 <TextBlock Text="Usuário" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ui:TextBox Text="{Binding UserId, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
+                <ui:TextBox Text="{Binding UserId, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16">
+                    <ui:TextBox.Style>
+                        <Style TargetType="{x:Type ui:TextBox}" BasedOn="{StaticResource {x:Type ui:TextBox}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding UseWindowsAuth}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ui:TextBox.Style>
+                </ui:TextBox>
 
                 <TextBlock Text="Senha" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ui:PasswordBox x:Name="PasswordBox" Margin="0,0,0,16"/>
+                <ui:PasswordBox x:Name="PasswordBox" Margin="0,0,0,16">
+                    <ui:PasswordBox.Style>
+                        <Style TargetType="{x:Type ui:PasswordBox}" BasedOn="{StaticResource {x:Type ui:PasswordBox}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding UseWindowsAuth}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ui:PasswordBox.Style>
+                </ui:PasswordBox>
 
                 <CheckBox Content="Localizar servidor automaticamente na rede local se a conexão configurada falhar"
                           IsChecked="{Binding AutoDiscover}"

@@ -11,6 +11,10 @@ public sealed class ConnectionSettings
     public string Server { get; set; } = string.Empty;
     public string Instance { get; set; } = string.Empty;
     public string Database { get; set; } = string.Empty;
+
+    /// <summary>Quando true, usa a identidade do Windows do usuário logado (sem usuário/senha do SQL).</summary>
+    public bool UseWindowsAuth { get; set; } = true;
+
     public string UserId { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public bool TrustServerCertificate { get; set; } = true;
@@ -25,11 +29,19 @@ public sealed class ConnectionSettings
         {
             DataSource = dataSource,
             InitialCatalog = Database,
-            UserID = UserId,
-            Password = Password,
             TrustServerCertificate = TrustServerCertificate,
             ConnectTimeout = ConnectTimeoutSeconds
         };
+
+        if (UseWindowsAuth)
+        {
+            builder.IntegratedSecurity = true;
+        }
+        else
+        {
+            builder.UserID = UserId;
+            builder.Password = Password;
+        }
 
         return builder.ConnectionString;
     }
@@ -50,6 +62,7 @@ public sealed class ConnectionSettings
             Server = server,
             Instance = instance,
             Database = builder.InitialCatalog,
+            UseWindowsAuth = builder.IntegratedSecurity,
             UserId = builder.UserID,
             Password = builder.Password,
             TrustServerCertificate = builder.TrustServerCertificate,

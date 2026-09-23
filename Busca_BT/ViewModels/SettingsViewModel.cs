@@ -31,6 +31,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private string _database = string.Empty;
 
     [ObservableProperty]
+    private bool _useWindowsAuth = true;
+
+    [ObservableProperty]
     private string _userId = string.Empty;
 
     [ObservableProperty]
@@ -60,6 +63,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Server = current.Server;
         Instance = current.Instance;
         Database = current.Database;
+        UseWindowsAuth = current.UseWindowsAuth;
         UserId = current.UserId;
         Password = current.Password;
         AutoDiscover = current.AutoDiscover;
@@ -70,6 +74,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Server = Server.Trim(),
         Instance = Instance.Trim(),
         Database = Database.Trim(),
+        UseWindowsAuth = UseWindowsAuth,
         UserId = UserId.Trim(),
         Password = Password,
         AutoDiscover = AutoDiscover,
