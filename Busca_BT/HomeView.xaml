@@ -38,7 +38,7 @@
                        VerticalAlignment="Center"/>
             <ui:Button DockPanel.Dock="Right"
                        Content="Importar planilha"
-                       Icon="{ui:SymbolIcon DocumentArrowUp24}"
+                       Icon="{ui:SymbolIcon DocumentArrowUp20}"
                        Appearance="Primary"
                        Command="{Binding ImportCommand}"/>
         </DockPanel>
