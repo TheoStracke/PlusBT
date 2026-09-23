@@ -21,9 +21,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="appsettings.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    <!-- Embutido no .exe: o app funciona sozinho, sem precisar desse arquivo solto
+         ao lado do executável. Se alguém colocar um appsettings.json de verdade na
+         mesma pasta do .exe, ele ainda é lido e tem prioridade sobre o embutido
+         (útil pra customizar Etiquetas/Bartender por máquina sem recompilar). -->
+    <EmbeddedResource Include="appsettings.json">
+      <LogicalName>Busca_BT.appsettings.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 	<ItemGroup>

@@ -1,9 +1,13 @@
 ﻿using Busca_BT.Infrastructure;
 using Busca_BT.ViewModels;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
+using System.IO;
+using System.Reflection;
 using System.Windows;
 using Busca_BT.Infrastructure.Converters;
 
@@ -70,6 +74,23 @@ namespace Busca_BT
                 Wpf.Ui.Controls.WindowBackdropType.Mica);
 
             _host = Host.CreateDefaultBuilder(e.Args)
+                .ConfigureAppConfiguration((context, config) =>
+                {
+                    // appsettings.json embutido no .exe (LogicalName definido no .csproj)
+                    // como base — o app funciona mesmo sem nenhum arquivo solto ao lado
+                    // do executável. Inserido no início da lista de fontes para que um
+                    // appsettings.json externo (se alguém colocar um do lado do .exe)
+                    // continue tendo prioridade e sobrescrevendo os valores embutidos.
+                    var assembly = Assembly.GetExecutingAssembly();
+                    using var resourceStream = assembly.GetManifestResourceStream("Busca_BT.appsettings.json");
+                    if (resourceStream is not null)
+                    {
+                        var buffer = new MemoryStream();
+                        resourceStream.CopyTo(buffer);
+                        buffer.Position = 0;
+                        config.Sources.Insert(0, new JsonStreamConfigurationSource { Stream = buffer });
+                    }
+                })
                 .ConfigureServices((context, services) =>
                 {
                     services.AddLogging(logging =>
