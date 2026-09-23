@@ -23,6 +23,7 @@ namespace Busca_BT.Data
         Task<int> InsertBatchAsync(IEnumerable<LabelRecord> records, int batchId);
         Task<bool> AssociateLabelFileAsync(int id, string filePath);
         Task<bool> UpdateStatusAsync(int id, LabelStatus status);
+        Task<bool> MarcarComoAbertaAsync(int id, CancellationToken ct = default);
         Task<int> DeleteByBatchAsync(int batchId);
         Task<int> CreateImportBatchAsync(string fileName, int total, int imported, int skipped);
         Task AtualizarHashPorCodigoAsync(string codigo, string filePath, string hash, CancellationToken ct = default);
@@ -246,6 +247,27 @@ namespace Busca_BT.Data
             catch (Exception ex)
             {
                 LogUpdateStatusError(logger, id, ex);
+                throw;
+            }
+        }
+
+        public async Task<bool> MarcarComoAbertaAsync(int id, CancellationToken ct = default)
+        {
+            const string sql = """
+                UPDATE dbo.Labels
+                SET    AbertaEm = SYSUTCDATETIME()
+                WHERE  Id = @Id AND AbertaEm IS NULL;
+                """;
+
+            try
+            {
+                await using var conn = (SqlConnection)await factory.OpenAsync(ct);
+                var rows = await conn.ExecuteAsync(sql, new { Id = id });
+                return rows > 0;
+            }
+            catch (Exception ex)
+            {
+                LogMarcarAbertaError(logger, id, ex);
                 throw;
             }
         }
@@ -491,7 +513,7 @@ namespace Busca_BT.Data
         private const string BaseSelectSql = """
             SELECT L.Id, L.Item, L.Invoice, L.Codigo, L.DescricaoAnvisa, L.QtdInvoice,
                    L.Lote, L.Validade, L.RegistroAnvisa, L.Lpn,
-                   T.LabelFilePath, L.Status, L.ImportedAt, L.UpdatedAt
+                   T.LabelFilePath, L.Status, L.ImportedAt, L.UpdatedAt, L.AbertaEm
             FROM   dbo.Labels L
             LEFT JOIN dbo.Templates T ON L.Codigo = T.Codigo
             """;
@@ -521,6 +543,9 @@ namespace Busca_BT.Data
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao atualizar status da etiqueta Id={Id}")]
         private static partial void LogUpdateStatusError(ILogger logger, int id, Exception ex);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao marcar etiqueta Id={Id} como aberta")]
+        private static partial void LogMarcarAbertaError(ILogger logger, int id, Exception ex);
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao deletar etiquetas do lote {BatchId}")]
         private static partial void LogDeleteBatchError(ILogger logger, int batchId, Exception ex);

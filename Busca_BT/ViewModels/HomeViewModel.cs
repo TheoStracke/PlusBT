@@ -294,6 +294,8 @@ namespace Busca_BT.ViewModels
                 _logger?.LogInformation("🟢 [ABRIR] ✅ Arquivo ENCONTRADO no disco!");
 
                 // For .btw files, use ProcessStartInfo with UseShellExecute to open with default program (BarTender)
+                var opened = false;
+
                 if (label.IsBtw)
                 {
                     _logger?.LogInformation("🟡 [ABRIR] Abrindo arquivo BTW com BarTender: {Path}", label.LabelFilePath);
@@ -302,6 +304,7 @@ namespace Busca_BT.ViewModels
                         UseShellExecute = true
                     });
                     _logger?.LogInformation("🟢 [ABRIR] ✅ BarTender iniciado com sucesso");
+                    opened = true;
                 }
                 else if (label.IsPdf)
                 {
@@ -315,6 +318,7 @@ namespace Busca_BT.ViewModels
                     else
                     {
                         _logger?.LogInformation("🟢 [ABRIR] ✅ PDF aberto com sucesso");
+                        opened = true;
                     }
                 }
                 else
@@ -325,6 +329,22 @@ namespace Busca_BT.ViewModels
                         UseShellExecute = true
                     });
                     _logger?.LogInformation("🟢 [ABRIR] ✅ Arquivo aberto com sucesso");
+                    opened = true;
+                }
+
+                if (opened && !label.FoiAberta)
+                {
+                    try
+                    {
+                        await _labelRepository.MarcarComoAbertaAsync(label.Id);
+                        label.AbertaEm = DateTime.UtcNow;
+                        ApplyFilters(); // reconstrói Items para destacar a linha na grid
+                    }
+                    catch (Exception ex)
+                    {
+                        // Não fatal: o arquivo já foi aberto, só a marcação falhou.
+                        _logger?.LogWarning(ex, "🟠 [ABRIR] Falha ao marcar etiqueta Id={Id} como aberta", label.Id);
+                    }
                 }
             }
             catch (Exception ex)

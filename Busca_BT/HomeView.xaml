@@ -95,6 +95,15 @@
         <Border Grid.Row="4" CornerRadius="8" BorderThickness="1"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
             <ui:DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True">
+                <DataGrid.RowStyle>
+                    <Style TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding FoiAberta}" Value="True">
+                                <Setter Property="Background" Value="#FFF4CE"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Item" Binding="{Binding Item}" Width="60" />
                     <DataGridTextColumn Header="Invoice" Binding="{Binding Invoice}" Width="150" />

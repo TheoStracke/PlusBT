@@ -27,6 +27,10 @@
         public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
 
+        /// <summary>Data/hora em que o arquivo foi aberto pela primeira vez (via botão Abrir). Null = nunca aberta.</summary>
+        public DateTime? AbertaEm { get; set; }
+        public bool FoiAberta => AbertaEm.HasValue;
+
         public bool HasFile => !string.IsNullOrWhiteSpace(LabelFilePath);
         public bool IsBtw => HasFile && LabelFilePath!.EndsWith(".btw", StringComparison.OrdinalIgnoreCase);
         public bool IsPdf => HasFile && LabelFilePath!.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
