@@ -72,8 +72,8 @@ namespace Busca_BT.ViewModels
         public string StatSemArquivo => _allRecords.Count(l => !l.HasFile).ToString();
         public string StatImportacoes => _allBatches.Count.ToString();
 
-        private int _statInvoicesValue;
-        public string StatInvoices => _statInvoicesValue.ToString();
+        private int _statEtiquetasValue;
+        public string StatEtiquetas => _statEtiquetasValue.ToString();
 
         private int _statFolhasValue;
         public string StatFolhas => _statFolhasValue.ToString();
@@ -154,12 +154,12 @@ namespace Busca_BT.ViewModels
                 doLote = doLote.Where(l => l.BatchId == batchId.Value);
             doLote = doLote.ToList();
 
-            // Folhas de espelho: contadas por invoice DISTINTO, escopadas ao lote
-            // selecionado (não ao texto de busca, para o número não oscilar
-            // enquanto o usuário procura um item específico).
-            _statInvoicesValue = doLote.Select(l => l.Invoice).Distinct().Count();
-            _statFolhasValue = EspelhoCalculator.CalcularFolhas(_statInvoicesValue);
-            RaisePropertyChanged(nameof(StatInvoices));
+            // Folhas de espelho: cada ITEM/linha da planilha é 1 etiqueta colada,
+            // escopadas ao lote selecionado (não ao texto de busca, para o número
+            // não oscilar enquanto o usuário procura um item específico).
+            _statEtiquetasValue = doLote.Count();
+            _statFolhasValue = EspelhoCalculator.CalcularFolhas(_statEtiquetasValue);
+            RaisePropertyChanged(nameof(StatEtiquetas));
             RaisePropertyChanged(nameof(StatFolhas));
 
             var filtrado = doLote;
