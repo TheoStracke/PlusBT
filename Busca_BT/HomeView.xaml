@@ -114,12 +114,12 @@
                     <DataGridTemplateColumn Header="Ação" Width="100">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <ui:Button Content="Abrir"
-                                           Appearance="Secondary"
-                                           Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                <ui:Button Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                            CommandParameter="{Binding}">
                                     <ui:Button.Style>
                                         <Style TargetType="{x:Type ui:Button}" BasedOn="{StaticResource {x:Type ui:Button}}">
+                                            <Setter Property="Content" Value="Abrir"/>
+                                            <Setter Property="Appearance" Value="Secondary"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding FoiAberta}" Value="True">
                                                     <Setter Property="Content" Value="Aberto"/>
