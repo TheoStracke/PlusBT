@@ -198,6 +198,14 @@ public sealed class DatabaseInitializer
         }
     }
 
+    // Colunas que o app espera existir, mas podem faltar em um banco criado antes
+    // dessa versão. Verificadas e criadas automaticamente a cada startup — evita
+    // precisar rodar ALTER TABLE manualmente em cada servidor.
+    private static readonly (string Table, string Column, string Definition)[] RequiredColumns =
+    [
+        ("Labels", "AbertaEm", "DATETIME NULL"),
+    ];
+
     private async Task ValidateSchemaAsync(CancellationToken ct)
     {
         await using var conn = (SqlConnection)await _factory.OpenAsync(ct);
@@ -215,7 +223,42 @@ public sealed class DatabaseInitializer
             throw new InvalidOperationException(
                 "Tabelas não encontradas. Execute o script de schema no servidor.");
 
+        await EnsureColumnsExistAsync(conn, ct);
+
         _logger.LogInformation("Conexão com SQL Server validada com sucesso. Servidor: {DataSource}",
             new SqlConnectionStringBuilder(_options.ActiveConnectionString).DataSource);
+    }
+
+    private async Task EnsureColumnsExistAsync(SqlConnection conn, CancellationToken ct)
+    {
+        foreach (var (table, column, definition) in RequiredColumns)
+        {
+            try
+            {
+                var exists = await conn.ExecuteScalarAsync<int>("""
+                    SELECT COUNT(*) FROM sys.columns
+                    WHERE object_id = OBJECT_ID(@FullTable) AND name = @Column
+                    """,
+                    new { FullTable = $"dbo.{table}", Column = column });
+
+                if (exists > 0)
+                    continue;
+
+                _logger.LogWarning(
+                    "Coluna {Table}.{Column} não encontrada no banco — criando automaticamente.",
+                    table, column);
+
+                await conn.ExecuteAsync($"ALTER TABLE dbo.{table} ADD {column} {definition};");
+            }
+            catch (Exception ex)
+            {
+                // Não bloqueia o startup: se faltar permissão de ALTER, o app segue
+                // funcionando (só a funcionalidade que depende dessa coluna falha).
+                _logger.LogError(ex,
+                    "Falha ao criar coluna {Table}.{Column} automaticamente. " +
+                    "Se o usuário/login não tiver permissão de ALTER TABLE, crie manualmente.",
+                    table, column);
+            }
+        }
     }
 }
