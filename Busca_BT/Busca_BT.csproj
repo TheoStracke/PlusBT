@@ -24,7 +24,7 @@
     <!-- Embutido no .exe: o app funciona sozinho, sem precisar desse arquivo solto
          ao lado do executável. Se alguém colocar um appsettings.json de verdade na
          mesma pasta do .exe, ele ainda é lido e tem prioridade sobre o embutido
-         (útil pra customizar Etiquetas/Bartender por máquina sem recompilar). -->
+         (útil pra customizar a conexão/log por máquina sem recompilar). -->
     <EmbeddedResource Include="appsettings.json">
       <LogicalName>Busca_BT.appsettings.json</LogicalName>
     </EmbeddedResource>
@@ -47,6 +47,12 @@
 	    <Pack>True</Pack>
 	    <PackagePath>\</PackagePath>
 	  </Resource>
+	  <Resource Include="BT+.png" />
+	  <!-- Splash nativa do WPF (aberta no construtor do App): imagem estática exibida no
+	       instante do clique no .exe, antes do .NET terminar de carregar. É a mesma arte
+	       da SplashWindow (sem o anel), que assume em seguida com a animação.
+	       Regerar se mudar o visual da SplashWindow. -->
+	  <Resource Include="splash.png" />
 	</ItemGroup>
 
 </Project>

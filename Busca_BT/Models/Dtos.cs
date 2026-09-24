@@ -1,4 +1,4 @@
-﻿namespace Busca_BT.Models
+namespace Busca_BT.Models
 {
     public class ImportResult
     {
@@ -6,49 +6,41 @@
         public int TotalRows { get; init; }
         public int ImportedRows { get; init; }
         public int SkippedRows { get; init; }
-        public int AssociatedFiles { get; init; } // NOVO: Contador de arquivos associados
         public string? ErrorMessage { get; init; }
-        public IReadOnlyList<string> RowErrors { get; init; } = [];
 
-        public static ImportResult Ok(int total, int imported, int skipped,
-                                      IReadOnlyList<string>? rowErrors = null, int associatedFiles = 0)
+        /// <summary>Linhas gravadas na fila (vazio quando a importação falha).</summary>
+        public IReadOnlyList<LabelRecord> Imported { get; init; } = [];
+
+        /// <summary>Linhas da planilha que não entraram na fila, com o motivo.</summary>
+        public IReadOnlyList<SkippedRow> Skipped { get; init; } = [];
+
+        public static ImportResult Ok(int total, IReadOnlyList<LabelRecord> imported, IReadOnlyList<SkippedRow> skipped)
             => new()
             {
                 Success = true,
                 TotalRows = total,
-                ImportedRows = imported,
-                SkippedRows = skipped,
-                AssociatedFiles = associatedFiles,
-                RowErrors = rowErrors ?? []
+                ImportedRows = imported.Count,
+                SkippedRows = skipped.Count,
+                Imported = imported,
+                Skipped = skipped
             };
 
-        public static ImportResult Fail(string errorMessage)
-            => new() { Success = false, ErrorMessage = errorMessage };
+        public static ImportResult Fail(string errorMessage, IReadOnlyList<SkippedRow>? skipped = null)
+            => new()
+            {
+                Success = false,
+                ErrorMessage = errorMessage,
+                SkippedRows = skipped?.Count ?? 0,
+                Skipped = skipped ?? []
+            };
     }
 
-    public class LabelFilter
+    /// <summary>Linha da planilha que não foi importada.</summary>
+    /// <param name="Linha">Número da linha no Excel.</param>
+    /// <param name="Codigo">Código do item (pode estar vazio).</param>
+    /// <param name="Motivo">Explicação para o usuário.</param>
+    public sealed record SkippedRow(int Linha, string Codigo, string Motivo)
     {
-        public string? Lote { get; init; }
-        public string? Lpn { get; init; }
-        public string? Invoice { get; init; }
-        public LabelStatus? Status { get; init; }
-
-        public bool HasCriteria =>
-            !string.IsNullOrWhiteSpace(Lote) ||
-            !string.IsNullOrWhiteSpace(Lpn) ||
-            !string.IsNullOrWhiteSpace(Invoice) ||
-            Status.HasValue;
-    }
-
-    public class BartenderPrintOptions
-    {
-        public int Copies { get; init; } = 1;
-        public string? PrinterName { get; init; }
-
-        /// <summary>
-        /// Variáveis substituídas na etiqueta via /NSS da CLI do Bartender.
-        /// Chave = nome do campo na etiqueta | Valor = conteúdo a preencher.
-        /// </summary>
-        public Dictionary<string, string> NamedSubStrings { get; init; } = [];
+        public string Titulo => string.IsNullOrWhiteSpace(Codigo) ? $"Linha {Linha}" : $"Linha {Linha}  ·  {Codigo}";
     }
 }

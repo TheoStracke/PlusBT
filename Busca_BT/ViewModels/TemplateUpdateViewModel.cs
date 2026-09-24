@@ -1,4 +1,5 @@
 using Busca_BT.Data;
+using Busca_BT.Infrastructure;
 using Busca_BT.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,7 +30,7 @@ public sealed class TemplateItem
 
     // ── Propriedades calculadas para a View ───────────────────────────────
     public string NomeArquivo => Path.GetFileName(LabelFilePath ?? string.Empty);
-    public string UpdatedAtFormatado => UpdatedAt?.ToString("dd/MM/yyyy HH:mm") ?? "—";
+    public string UpdatedAtFormatado => UpdatedAt?.UtcToLocal().ToString("dd/MM/yyyy HH:mm") ?? "—";
     public bool TemArquivo => File.Exists(LabelFilePath);
 
     public string StatusTexto => TemArquivo ? "Associada" : "Sem arquivo";

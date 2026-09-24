@@ -1,7 +1,6 @@
 using Busca_BT.Data;
 using Busca_BT.Models;
 using Busca_BT.Services;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -18,18 +17,20 @@ namespace Busca_BT.ViewModels
     public sealed class HomeViewModel : BaseViewModel
     {
         private readonly IExcelImportService _excelImportService;
+        private readonly IInvoiceReportService _reportService;
         private readonly ILabelRepository _labelRepository;
-        private readonly IBartenderService _bartenderService;
-        private readonly INavigationService _navigation;
-        private readonly EtiquetasOptions _options;
         private readonly IDialogService _dialog;
         private readonly ILogger<HomeViewModel>? _logger;
 
+        // Tempo que o check verde fica na tela antes de abrir o modal de resumo.
+        private const int SuccessAnimationMs = 1600;
+
         private List<LabelRecord> _allRecords = new();
         private List<ImportBatchRecord> _allBatches = new();
+        private List<InvoiceGroupViewModel> _allGroups = new();
 
-        public ObservableCollection<LabelRecord> Items { get; } = new();
-        public ObservableCollection<BatchOption> Batches { get; } = new();
+        /// <summary>Invoices exibidas na Home (uma linha por invoice, expansível).</summary>
+        public ObservableCollection<InvoiceGroupViewModel> Invoices { get; } = new();
 
         private string _searchTerm = string.Empty;
         public string SearchTerm
@@ -42,35 +43,45 @@ namespace Busca_BT.ViewModels
             }
         }
 
-        private BatchOption? _selectedBatch;
-        public BatchOption? SelectedBatch
+        // ── Estado do overlay de importação ──────────────────────────────────
+        // Processando (spinner) → Sucesso (check verde animado) → Resumo (modal).
+        // Em caso de falha vai direto do Processando para o Resumo.
+
+        private bool _isImporting;
+        public bool IsImporting
         {
-            get => _selectedBatch;
-            set
-            {
-                if (SetProperty(ref _selectedBatch, value))
-                    ApplyFilters();
-            }
+            get => _isImporting;
+            private set { if (SetProperty(ref _isImporting, value)) RaisePropertyChanged(nameof(IsOverlayVisible)); }
         }
 
-        private DateTime _dataUltimaCarga = DateTime.MinValue;
-        public DateTime DataUltimaCarga
+        private bool _isSuccessAnimation;
+        public bool IsSuccessAnimation
         {
-            get => _dataUltimaCarga;
-            set => SetProperty(ref _dataUltimaCarga, value);
+            get => _isSuccessAnimation;
+            private set { if (SetProperty(ref _isSuccessAnimation, value)) RaisePropertyChanged(nameof(IsOverlayVisible)); }
         }
 
-        private bool _temAtualizacaoPendente;
-        public bool TemAtualizacaoPendente
+        private bool _isSummaryOpen;
+        public bool IsSummaryOpen
         {
-            get => _temAtualizacaoPendente;
-            set => SetProperty(ref _temAtualizacaoPendente, value);
+            get => _isSummaryOpen;
+            private set { if (SetProperty(ref _isSummaryOpen, value)) RaisePropertyChanged(nameof(IsOverlayVisible)); }
+        }
+
+        public bool IsOverlayVisible => IsImporting || IsSuccessAnimation || IsSummaryOpen;
+
+        private ImportSummary? _summary;
+        public ImportSummary? Summary
+        {
+            get => _summary;
+            private set => SetProperty(ref _summary, value);
         }
 
         public string StatTotal => _allRecords.Count.ToString();
         public string StatVinculados => _allRecords.Count(l => l.HasFile).ToString();
         public string StatSemArquivo => _allRecords.Count(l => !l.HasFile).ToString();
         public string StatImportacoes => _allBatches.Count.ToString();
+        public string StatInvoices => _allGroups.Count == 1 ? "1 invoice" : $"{_allGroups.Count} invoices";
 
         private int _statEtiquetasValue;
         public string StatEtiquetas => _statEtiquetasValue.ToString();
@@ -81,29 +92,43 @@ namespace Busca_BT.ViewModels
         public ICommand LoadCommand { get; }
         public ICommand ImportCommand { get; }
         public ICommand OpenCommand { get; }
-        public ICommand SyncCommand { get; }
+        public ICommand CloseSummaryCommand { get; }
+        public ICommand OpenReportFolderCommand { get; }
 
         public HomeViewModel(
             IExcelImportService excelImportService,
+            IInvoiceReportService reportService,
             ILabelRepository labelRepository,
-            IBartenderService bartenderService,
-            INavigationService navigation,
-            EtiquetasOptions options,
             IDialogService dialog,
             ILogger<HomeViewModel>? logger = null)
         {
             _excelImportService = excelImportService;
+            _reportService = reportService;
             _labelRepository = labelRepository;
-            _bartenderService = bartenderService;
-            _navigation = navigation;
-            _options = options;
             _dialog = dialog;
             _logger = logger;
 
             LoadCommand = new RelayCommand(async () => await LoadAsync());
-            ImportCommand = new RelayCommand(async () => await ImportAsync());
+            ImportCommand = new RelayCommand(async () => await ImportAsync(), () => !IsOverlayVisible);
             OpenCommand = new RelayCommand(async p => await OpenAsync(p));
-            SyncCommand = new RelayCommand(async () => await SyncAsync());
+            CloseSummaryCommand = new RelayCommand(() => IsSummaryOpen = false);
+            OpenReportFolderCommand = new RelayCommand(OpenReportFolder);
+        }
+
+        private void OpenReportFolder()
+        {
+            if (Summary?.RelatorioPasta is not { } pasta || !Directory.Exists(pasta))
+                return;
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(pasta) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Falha ao abrir a pasta de relatórios {Pasta}", pasta);
+                _dialog.ShowWarning("Relatórios", $"Não foi possível abrir a pasta:\n{pasta}");
+            }
         }
 
         public async Task LoadAsync()
@@ -111,80 +136,57 @@ namespace Busca_BT.ViewModels
             _allRecords = (await _labelRepository.GetAllAsync()).ToList();
             _allBatches = (await _labelRepository.GetBatchesAsync()).ToList();
 
-            Batches.Clear();
-            Batches.Add(new BatchOption(null, $"Todas as importações  ({_allBatches.Count})"));
-            foreach (var b in _allBatches.OrderByDescending(b => b.ImportedAt))
-                Batches.Add(new BatchOption(b.Id, b.Resumo));
+            // Uma linha por invoice, na ordem em que aparecem na planilha.
+            // Mantém abertas as invoices que o usuário já tinha expandido.
+            var expandidas = _allGroups.Where(g => g.IsExpanded).Select(g => g.Invoice)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            // Update load timestamp and check for pending updates
-            DataUltimaCarga = DateTime.UtcNow;
-            TemAtualizacaoPendente = false;
+            _allGroups = _allRecords
+                .GroupBy(l => l.Invoice, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new InvoiceGroupViewModel(g.Key, g.ToList())
+                {
+                    IsExpanded = expandidas.Contains(g.Key)
+                })
+                .ToList();
+
+            // Folhas de espelho: calculadas por invoice e somadas (cada invoice
+            // começa uma folha nova). Não dependem da busca, para o número não
+            // oscilar enquanto o usuário procura um item específico.
+            _statEtiquetasValue = _allRecords.Count;
+            _statFolhasValue = _allGroups.Sum(g => g.Folhas);
 
             ApplyFilters();
             RaisePropertyChanged(nameof(StatTotal));
             RaisePropertyChanged(nameof(StatVinculados));
             RaisePropertyChanged(nameof(StatSemArquivo));
             RaisePropertyChanged(nameof(StatImportacoes));
-        }
-
-        public async Task VerificarNovosTemplatesAsync()
-        {
-            try
-            {
-                var latestUpdate = await _labelRepository.GetLatestUpdateTimestampAsync();
-                if (latestUpdate.HasValue && latestUpdate.Value > DataUltimaCarga)
-                {
-                    TemAtualizacaoPendente = true;
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log but don't show error — this is a background check
-                System.Diagnostics.Debug.WriteLine($"Erro ao verificar novos templates: {ex.Message}");
-            }
+            RaisePropertyChanged(nameof(StatEtiquetas));
+            RaisePropertyChanged(nameof(StatFolhas));
+            RaisePropertyChanged(nameof(StatInvoices));
         }
 
         private void ApplyFilters()
         {
             var termo = SearchTerm?.Trim() ?? string.Empty;
-            var batchId = SelectedBatch?.Id;
 
-            var doLote = _allRecords.AsEnumerable();
-            if (batchId.HasValue)
-                doLote = doLote.Where(l => l.BatchId == batchId.Value);
-            doLote = doLote.ToList();
+            Invoices.Clear();
+            foreach (var group in _allGroups)
+            {
+                if (!group.ApplyFilter(termo))
+                    continue;
 
-            // Folhas de espelho: cada ITEM/linha da planilha é 1 etiqueta colada,
-            // escopadas ao lote selecionado (não ao texto de busca, para o número
-            // não oscilar enquanto o usuário procura um item específico).
-            _statEtiquetasValue = doLote.Count();
-            _statFolhasValue = EspelhoCalculator.CalcularFolhas(_statEtiquetasValue);
-            RaisePropertyChanged(nameof(StatEtiquetas));
-            RaisePropertyChanged(nameof(StatFolhas));
+                // Buscando: abre as invoices encontradas para mostrar o rótulo.
+                if (termo.Length > 0)
+                    group.IsExpanded = true;
 
-            var filtrado = doLote;
-            if (!string.IsNullOrEmpty(termo))
-                filtrado = filtrado.Where(l =>
-                    l.Invoice.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
-                    l.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
-                    l.Lote.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
-                    l.Lpn.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
-                    l.DescricaoAnvisa.Contains(termo, StringComparison.OrdinalIgnoreCase));
-
-            Items.Clear();
-            foreach (var it in filtrado)
-                Items.Add(it);
-        }
-
-        private async Task SyncAsync()
-        {
-            await LoadAsync();
+                Invoices.Add(group);
+            }
         }
 
         private async Task ImportAsync()
         {
-            _logger?.LogInformation("🔵 [IMPORTAÇÃO] Usuário clicou em IMPORTAR PLANILHA");
-            
+            _logger?.LogInformation("[IMPORTAÇÃO] Usuário clicou em IMPORTAR PLANILHA");
+
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "Planilhas Excel (*.xlsx)|*.xlsx",
@@ -193,96 +195,104 @@ namespace Busca_BT.ViewModels
 
             if (dialog.ShowDialog() != true)
             {
-                _logger?.LogInformation("🔴 [IMPORTAÇÃO] Usuário cancelou a seleção de arquivo");
+                _logger?.LogInformation("[IMPORTAÇÃO] Usuário cancelou a seleção de arquivo");
                 return;
             }
 
-            _logger?.LogInformation("🟡 [IMPORTAÇÃO] Arquivo selecionado: {FilePath}", dialog.FileName);
+            _logger?.LogInformation("[IMPORTAÇÃO] Arquivo selecionado: {FilePath}", dialog.FileName);
 
+            IsSummaryOpen = false;
+            IsImporting = true;
+
+            ImportSummary summary;
             try
             {
-                _logger?.LogInformation("🟡 [IMPORTAÇÃO] Iniciando processo de importação...");
                 var result = await _excelImportService.ImportAsync(dialog.FileName);
-                
+
                 if (result.Success)
                 {
-                    _logger?.LogInformation("🟢 [IMPORTAÇÃO] ✅ Importação bem-sucedida!");
-                    _logger?.LogInformation("   - Total de linhas: {Total}", result.TotalRows);
-                    _logger?.LogInformation("   - Importadas: {Imported}", result.ImportedRows);
-                    _logger?.LogInformation("   - Ignoradas: {Skipped}", result.SkippedRows);
-                    _logger?.LogInformation("   - Arquivos vinculados: {Associated}", result.AssociatedFiles);
-                    
+                    _logger?.LogInformation(
+                        "[IMPORTAÇÃO] Concluída. Total={Total} | Importadas={Imported} | Ignoradas={Skipped}",
+                        result.TotalRows, result.ImportedRows, result.SkippedRows);
+
+                    // Relatório .xlsx por invoice, salvo automaticamente em Downloads.
+                    // Uma falha aqui não desfaz a importação — só é avisada no modal.
+                    string? pasta = null, erroRelatorio = null;
+                    var quantidade = 0;
+                    try
+                    {
+                        var relatorio = await _reportService.GerarAsync(result.Imported, dialog.FileName);
+                        pasta = relatorio.Pasta;
+                        quantidade = relatorio.Arquivos.Count;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "[IMPORTAÇÃO] Falha ao gerar relatórios por invoice");
+                        erroRelatorio = $"Não foi possível salvar os relatórios: {ex.Message}";
+                    }
+
+                    summary = ImportSummary.From(dialog.FileName, result, pasta, quantidade, erroRelatorio);
+
+                    // A fila antiga já foi substituída no banco: limpa a busca para
+                    // a planilha nova aparecer inteira e recarrega a grid.
+                    SearchTerm = string.Empty;
                     await LoadAsync();
-
-                    // Mensagem limpa e direta! A vinculação agora é feita pelo banco de dados (Mala Direta)
-                    string detailsMessage = $"Arquivo: {Path.GetFileName(dialog.FileName)}\n" +
-                        $"Importados: {result.ImportedRows}\n" +
-                        $"Ignorados: {result.SkippedRows}\n\n" +
-                        $"✅ Fila atualizada e cruzada com o Acervo de etiquetas com sucesso!";
-
-                    _logger?.LogInformation("🟢 [IMPORTAÇÃO] Importação concluída. Vinculação gerenciada pelo Banco de Dados.");
-
-                    _dialog.ShowInfo("Importação concluída", detailsMessage);
                 }
                 else
                 {
-                    _logger?.LogError("🔴 [IMPORTAÇÃO] Erro na importação: {ErrorMessage}", result.ErrorMessage);
-                    _dialog.ShowError("Erro na importação",
-                        (result.ErrorMessage ?? "Erro ao importar.") + "\n\nOs dados antigos foram preservados.");
+                    summary = ImportSummary.From(dialog.FileName, result);
+                    _logger?.LogError("[IMPORTAÇÃO] Erro na importação: {ErrorMessage}", result.ErrorMessage);
                 }
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "🔴 [IMPORTAÇÃO] Exceção inesperada durante importação");
-                _dialog.ShowError("Erro inesperado", ex.Message + "\n\nOs dados antigos foram preservados.");
+                _logger?.LogError(ex, "[IMPORTAÇÃO] Exceção inesperada durante importação");
+                summary = ImportSummary.FromException(dialog.FileName, ex);
             }
+            finally
+            {
+                IsImporting = false;
+            }
+
+            Summary = summary;
+
+            if (summary.Success)
+            {
+                IsSuccessAnimation = true;
+                await Task.Delay(SuccessAnimationMs);
+                IsSuccessAnimation = false;
+            }
+
+            IsSummaryOpen = true;
         }
 
         private async Task OpenAsync(object? param)
         {
             if (param is not LabelRecord label)
             {
-                _logger?.LogWarning("🟡 [ABRIR] Parâmetro inválido - não é LabelRecord");
+                _logger?.LogWarning("[ABRIR] Parâmetro inválido - não é LabelRecord");
                 return;
             }
 
-            _logger?.LogInformation("🔵 [ABRIR] Usuário clicou em ABRIR para etiqueta: {Invoice} ({Codigo})", label.Invoice, label.Codigo);
+            _logger?.LogInformation("[ABRIR] Usuário clicou em ABRIR para etiqueta: {Invoice} ({Codigo})", label.Invoice, label.Codigo);
 
             try
             {
-                // Validação mais detalhada do arquivo
                 if (!label.HasFile)
                 {
-                    if (string.IsNullOrWhiteSpace(label.LabelFilePath))
-                    {
-                        _logger?.LogWarning("🟠 [ABRIR] ❌ Etiqueta SEM template - LabelFilePath está vazio");
-                        _logger?.LogWarning("   Invoice: {Invoice} | Código: {Codigo}", label.Invoice, label.Codigo);
-                        
-                        _dialog.ShowWarning("Sem template", 
-                            $"Esta etiqueta (Invoice: {label.Invoice}, Código: {label.Codigo}) não possui template vinculado.\n\n" +
-                            "Nenhum arquivo foi associado durante a importação.");
-                    }
-                    else
-                    {
-                        _logger?.LogWarning("🟠 [ABRIR] ❌ LabelFilePath não está vazio mas HasFile=false: {Path}", label.LabelFilePath);
-                        
-                        _dialog.ShowWarning("Arquivo não encontrado",
-                            $"O template não está acessível.\n\n" +
-                            $"Etiqueta: {label.Invoice}\n" +
-                            $"Arquivo esperado: {label.LabelFilePath}");
-                    }
+                    _logger?.LogWarning("[ABRIR] Etiqueta SEM template | Invoice: {Invoice} | Código: {Codigo}",
+                        label.Invoice, label.Codigo);
+
+                    _dialog.ShowWarning("Sem template",
+                        $"Esta etiqueta (Invoice: {label.Invoice}, Código: {label.Codigo}) não possui template vinculado.\n\n" +
+                        "Cadastre um arquivo .btw com esse código na tela Templates.");
                     return;
                 }
 
-                _logger?.LogInformation("🟡 [ABRIR] Etiqueta HAS FILE. Verificando existência do arquivo...");
-                _logger?.LogInformation("   Caminho: {Path}", label.LabelFilePath);
-                _logger?.LogInformation("   É BTW: {IsBtw} | É PDF: {IsPdf}", label.IsBtw, label.IsPdf);
-
-                // Verificar se o arquivo ainda existe no disco
                 if (!File.Exists(label.LabelFilePath))
                 {
-                    _logger?.LogError("🔴 [ABRIR] ❌ ARQUIVO NÃO EXISTE NO DISCO! Caminho: {Path}", label.LabelFilePath);
-                    
+                    _logger?.LogError("[ABRIR] ARQUIVO NÃO EXISTE NO DISCO! Caminho: {Path}", label.LabelFilePath);
+
                     _dialog.ShowWarning("Arquivo não encontrado",
                         $"O arquivo do template foi movido ou deletado.\n\n" +
                         $"Etiqueta: {label.Invoice}\n" +
@@ -291,66 +301,33 @@ namespace Busca_BT.ViewModels
                     return;
                 }
 
-                _logger?.LogInformation("🟢 [ABRIR] ✅ Arquivo ENCONTRADO no disco!");
-
-                // For .btw files, use ProcessStartInfo with UseShellExecute to open with default program (BarTender)
-                var opened = false;
-
-                if (label.IsBtw)
+                // Abre com o programa padrão do Windows (.btw → BarTender, .pdf → leitor de PDF).
+                _logger?.LogInformation("[ABRIR] Abrindo arquivo com programa padrão: {Path}", label.LabelFilePath);
+                Process.Start(new ProcessStartInfo(label.LabelFilePath!)
                 {
-                    _logger?.LogInformation("🟡 [ABRIR] Abrindo arquivo BTW com BarTender: {Path}", label.LabelFilePath);
-                    Process.Start(new ProcessStartInfo(label.LabelFilePath!)
-                    {
-                        UseShellExecute = true
-                    });
-                    _logger?.LogInformation("🟢 [ABRIR] ✅ BarTender iniciado com sucesso");
-                    opened = true;
-                }
-                else if (label.IsPdf)
-                {
-                    _logger?.LogInformation("🟡 [ABRIR] Abrindo arquivo PDF com BartenderService: {Path}", label.LabelFilePath);
-                    var result = await _bartenderService.OpenPdfAsync(label);
-                    if (result?.Success == false)
-                    {
-                        _logger?.LogError("🔴 [ABRIR] Erro ao abrir PDF: {Message}", result.Message);
-                        _dialog.ShowWarning("Erro", result.Message ?? "Falha ao abrir o arquivo.");
-                    }
-                    else
-                    {
-                        _logger?.LogInformation("🟢 [ABRIR] ✅ PDF aberto com sucesso");
-                        opened = true;
-                    }
-                }
-                else
-                {
-                    _logger?.LogInformation("🟡 [ABRIR] Abrindo arquivo com programa padrão: {Path}", label.LabelFilePath);
-                    Process.Start(new ProcessStartInfo(label.LabelFilePath!)
-                    {
-                        UseShellExecute = true
-                    });
-                    _logger?.LogInformation("🟢 [ABRIR] ✅ Arquivo aberto com sucesso");
-                    opened = true;
-                }
+                    UseShellExecute = true
+                });
+                _logger?.LogInformation("[ABRIR] Arquivo aberto com sucesso");
 
-                if (opened && !label.FoiAberta)
+                if (!label.FoiAberta)
                 {
                     try
                     {
                         await _labelRepository.MarcarComoAbertaAsync(label.Id);
+                        // Notifica a linha (botão "Aberto") e a barra de progresso da invoice.
                         label.AbertaEm = DateTime.UtcNow;
-                        ApplyFilters(); // reconstrói Items para destacar a linha na grid
                     }
                     catch (Exception ex)
                     {
                         // Não fatal: o arquivo já foi aberto, só a marcação falhou.
-                        _logger?.LogWarning(ex, "🟠 [ABRIR] Falha ao marcar etiqueta Id={Id} como aberta", label.Id);
+                        _logger?.LogWarning(ex, "[ABRIR] Falha ao marcar etiqueta Id={Id} como aberta", label.Id);
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "🔴 [ABRIR] Exceção inesperada ao abrir etiqueta: {Invoice}", label?.Invoice);
-                _dialog.ShowError("Erro ao abrir etiqueta", 
+                _logger?.LogError(ex, "[ABRIR] Exceção inesperada ao abrir etiqueta: {Invoice}", label?.Invoice);
+                _dialog.ShowError("Erro ao abrir etiqueta",
                     $"Ocorreu um erro inesperado ao tentar abrir o template.\n\n" +
                     $"Detalhes: {ex.Message}\n\n" +
                     $"Etiqueta: {label?.Invoice}");

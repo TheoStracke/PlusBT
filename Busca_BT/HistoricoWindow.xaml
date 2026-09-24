@@ -29,7 +29,7 @@
                                         Binding="{Binding FileName}"
                                         Width="*"/>
                     <DataGridTextColumn Header="DATA"
-                                        Binding="{Binding ImportedAt, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}"
+                                        Binding="{Binding ImportedAtLocal, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}"
                                         Width="160"/>
                     <DataGridTextColumn Header="IMPORTADOS"
                                         Binding="{Binding ImportedRows}"

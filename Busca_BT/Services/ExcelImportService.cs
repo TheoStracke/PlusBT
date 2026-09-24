@@ -36,15 +36,20 @@ namespace Busca_BT.Services
             ["QtdInvoice"] = ["Quantity Packed", "Qtd Invoice", "Quantidade", "Qty", "Quantity"],
             ["Lote"] = ["Lot Number", "Lote", "Lot"],
             ["Validade"] = ["Lot Expiration Date", "Validade", "Expiration Date", "Data de Validade", "Data Validade"],
-            ["RegistroAnvisa"] = ["Register# Nº Registro", "Registro Anvisa", "Registro", "Register Number", "Nº Registro", "Register#"],
             ["Lpn"] = ["LPN"],
         };
 
-        // Coluna opcional de filtro: se existir na planilha, só importa linhas marcadas
-        // com um valor afirmativo. Se a coluna não existir (planilhas no formato antigo),
-        // nenhum filtro é aplicado e todas as linhas válidas são importadas normalmente.
-        private static readonly string[] PrecisaEtiquetaAliases =
-            ["Precisa de Etiqueta?", "Precisa de Etiqueta", "Needs Label", "Need Label?", "Necessita Etiqueta?"];
+        // Colunas opcionais: se não existirem na planilha, a importação segue normalmente.
+        //  - RegistroAnvisa: fica vazio quando a coluna não existe.
+        //  - PrecisaEtiqueta: filtro — se existir, só importa linhas marcadas com um valor
+        //    afirmativo; se não existir (formato antigo), todas as linhas válidas entram.
+        private static readonly Dictionary<string, string[]> OptionalHeaderAliases = new()
+        {
+            ["RegistroAnvisa"] = ["Register# Nº Registro", "Registro Anvisa", "Registro", "Register Number", "Nº Registro", "Register#"],
+            ["PrecisaEtiqueta"] = ["Precisa de Etiqueta?", "Precisa de Etiqueta", "Needs Label", "Need Label?", "Necessita Etiqueta?"],
+            //  - Local: unidade de destino (Extrema / Palhoça), usada no relatório por invoice.
+            ["Local"] = ["Bill To Location City", "Location City", "Cidade", "Filial", "Unidade", "Local"],
+        };
 
         private static readonly string[] AffirmativeValues = ["yes", "sim", "y", "s", "true", "1"];
 
@@ -64,7 +69,9 @@ namespace Busca_BT.Services
 
             try
             {
-                using var workbook = new XLWorkbook(filePath);
+                // FileShare.ReadWrite: permite importar mesmo com a planilha aberta no Excel.
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var workbook = new XLWorkbook(stream);
 
                 if (!workbook.TryGetWorksheet(SheetName, out var sheet))
                 {
@@ -91,51 +98,58 @@ namespace Busca_BT.Services
                 LogHeaderResolved(logger, precisaEtiquetaCol.HasValue);
 
                 var records = new List<LabelRecord>();
-                var rowErrors = new List<string>();
-                var skippedByError = 0;
-                var skippedByFilter = 0;
+                var skipped = new List<SkippedRow>();
+                var totalRows = 0;
 
-                // Variável que vai forçar a sequência correta, não importa o que esteja no Excel
-                var currentItemSequence = 1;
+                // Numeração do Item recalculada por invoice (1, 2, 3… em cada uma),
+                // ignorando a coluna Item da planilha.
+                var itemPorInvoice = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
                 for (int row = 2; row <= lastRow; row++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (TryParseRow(sheet, row, currentItemSequence, cols, precisaEtiquetaCol,
+                    // Linhas totalmente vazias (formatação sobrando no Excel) são ignoradas em silêncio.
+                    if (cols.Values.All(c => string.IsNullOrWhiteSpace(GetString(sheet, row, c))))
+                        continue;
+
+                    totalRows++;
+
+                    if (TryParseRow(sheet, row, cols, precisaEtiquetaCol,
                         out var record, out var error, out var filteredOut))
                     {
-                        records.Add(record!);
-                        currentItemSequence++; // Só incrementa se a linha for válida e importada com sucesso
+                        var seq = itemPorInvoice.GetValueOrDefault(record!.Invoice) + 1;
+                        itemPorInvoice[record.Invoice] = seq;
+                        record.Item = seq; // Só conta linhas válidas e importadas
+                        records.Add(record);
+                        continue;
                     }
-                    else if (filteredOut)
+
+                    var codigo = GetString(sheet, row, cols["Codigo"]);
+
+                    if (filteredOut)
                     {
-                        skippedByFilter++;
+                        skipped.Add(new SkippedRow(row, codigo, "Marcada como \"não precisa de etiqueta\"."));
                     }
                     else
                     {
-                        rowErrors.Add($"Linha {row}: {error}");
-                        skippedByError++;
+                        skipped.Add(new SkippedRow(row, codigo, error!));
                         LogRowSkipped(logger, row, error!);
                     }
                 }
 
-                var totalSkipped = skippedByError + skippedByFilter;
-
                 if (records.Count == 0)
                     return ImportResult.Fail(
-                        $"Nenhuma linha válida para importar (sem etiqueta necessária: {skippedByFilter}, " +
-                        $"com erro: {skippedByError}). " +
-                        (rowErrors.Count > 0 ? $"Erros: {string.Join("; ", rowErrors)}" : string.Empty));
+                        "Nenhuma linha válida para importar. A fila atual foi mantida.", skipped);
 
                 int batchId = await repository.CreateImportBatchAsync(
-                    filePath, total: lastRow - 1, imported: records.Count, skipped: totalSkipped);
+                    filePath, total: totalRows, imported: records.Count, skipped: skipped.Count);
 
-                int insertedCount = await repository.ReplaceAllAsync(records, batchId);
+                await repository.ReplaceAllAsync(records, batchId);
 
-                LogImportFinished(logger, lastRow - 1, insertedCount, totalSkipped);
+                LogImportFinished(logger, totalRows, records.Count, skipped.Count);
 
-                return ImportResult.Ok(lastRow - 1, insertedCount, totalSkipped, rowErrors, 0);
+                return ImportResult.Ok(totalRows, records, skipped);
             }
             catch (OperationCanceledException)
             {
@@ -170,11 +184,13 @@ namespace Busca_BT.Services
 
             var resolved = new Dictionary<string, int>();
 
+            int? FindColumn(string[] aliases) => aliases
+                .Select(alias => headerLookup.TryGetValue(NormalizeHeader(alias), out var c) ? c : (int?)null)
+                .FirstOrDefault(c => c.HasValue);
+
             foreach (var (field, aliases) in RequiredHeaderAliases)
             {
-                var col = aliases
-                    .Select(alias => headerLookup.TryGetValue(NormalizeHeader(alias), out var c) ? c : (int?)null)
-                    .FirstOrDefault(c => c.HasValue);
+                var col = FindColumn(aliases);
 
                 if (col is null)
                 {
@@ -186,12 +202,11 @@ namespace Busca_BT.Services
                 resolved[field] = col.Value;
             }
 
-            var precisaEtiquetaCol = PrecisaEtiquetaAliases
-                .Select(alias => headerLookup.TryGetValue(NormalizeHeader(alias), out var c) ? c : (int?)null)
-                .FirstOrDefault(c => c.HasValue);
-
-            if (precisaEtiquetaCol is not null)
-                resolved["PrecisaEtiqueta"] = precisaEtiquetaCol.Value;
+            foreach (var (field, aliases) in OptionalHeaderAliases)
+            {
+                if (FindColumn(aliases) is int col)
+                    resolved[field] = col;
+            }
 
             missingField = null;
             foundHeaders = found;
@@ -211,7 +226,6 @@ namespace Busca_BT.Services
         private static bool TryParseRow(
             IXLWorksheet sheet,
             int rowNum,
-            int expectedItemSequence, // Recebe a sequência correta forçada pelo loop acima
             IReadOnlyDictionary<string, int> cols,
             int? precisaEtiquetaCol,
             out LabelRecord? record,
@@ -233,9 +247,6 @@ namespace Busca_BT.Services
                         return false;
                     }
                 }
-
-                // Ignoramos a coluna 'Item' da planilha; a sequência é recalculada aqui.
-                int item = expectedItemSequence;
 
                 var invoice = GetString(sheet, rowNum, cols["Invoice"]);
                 if (string.IsNullOrWhiteSpace(invoice))
@@ -263,15 +274,21 @@ namespace Busca_BT.Services
                     return false;
                 }
 
-                var registroAnvisa = GetString(sheet, rowNum, cols["RegistroAnvisa"]);
+                // Opcional: vazio quando a planilha não tem a coluna de registro.
+                var registroAnvisa = cols.TryGetValue("RegistroAnvisa", out var regCol)
+                    ? GetString(sheet, rowNum, regCol)
+                    : string.Empty;
 
                 var lpn = GetString(sheet, rowNum, cols["Lpn"]);
                 if (string.IsNullOrWhiteSpace(lpn))
                 { error = "Coluna 'LPN' está vazia."; return false; }
 
+                var local = cols.TryGetValue("Local", out var localCol)
+                    ? NormalizarLocal(GetString(sheet, rowNum, localCol))
+                    : string.Empty;
+
                 record = new LabelRecord
                 {
-                    Item = item, // Recebe a nossa sequência perfeita calculada matematicamente
                     Invoice = invoice,
                     Codigo = codigo,
                     DescricaoAnvisa = descricao,
@@ -280,8 +297,8 @@ namespace Busca_BT.Services
                     Validade = validade,
                     RegistroAnvisa = registroAnvisa,
                     Lpn = lpn,
+                    Local = local,
                     LabelFilePath = null,
-                    Status = LabelStatus.Pendente,
                     ImportedAt = DateTime.UtcNow
                 };
 
@@ -295,6 +312,17 @@ namespace Busca_BT.Services
         }
 
         // ── Helpers de célula ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// Padroniza a unidade: "PALHOCA", "Palhoça"… → "Palhoça"; "EXTREMA" → "Extrema".
+        /// Outros valores são mantidos como vieram (vazio = não informado).
+        /// </summary>
+        private static string NormalizarLocal(string raw)
+        {
+            if (raw.Contains("PALHO", StringComparison.OrdinalIgnoreCase)) return "Palhoça";
+            if (raw.Contains("EXTREMA", StringComparison.OrdinalIgnoreCase)) return "Extrema";
+            return raw;
+        }
 
         private static string GetString(IXLWorksheet sheet, int row, int col)
         {

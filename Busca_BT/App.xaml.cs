@@ -22,8 +22,14 @@ namespace Busca_BT
 
         public static IServiceProvider ServiceProvider { get; private set; } = null!;
 
+        // Imagem estática mostrada no instante do clique no .exe (antes do WPF carregar
+        // a primeira janela). Fecha quando a SplashWindow animada termina de desenhar.
+        private readonly SplashScreen _nativeSplash = new("splash.png");
+
         public App()
         {
+            _nativeSplash.Show(autoClose: false, topMost: true);
+
             Startup += Application_Startup;
             Exit += Application_Exit;
             DispatcherUnhandledException += App_DispatcherUnhandledException;
@@ -54,12 +60,23 @@ namespace Busca_BT
 
         private async void Application_Startup(object sender, StartupEventArgs e)
         {
+            Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
+                Wpf.Ui.Appearance.ApplicationTheme.Light,
+                Wpf.Ui.Controls.WindowBackdropType.Mica);
+
+            // Tela de abertura: primeira coisa que aparece ao clicar no .exe.
+            var splash = new SplashWindow();
+            splash.ContentRendered += (_, _) => _nativeSplash.Close(TimeSpan.FromMilliseconds(150));
+            splash.Show();
+
             try
             {
-                await RunStartupAsync(e);
+                await RunStartupAsync(e, splash);
             }
             catch (Exception ex)
             {
+                _nativeSplash.Close(TimeSpan.Zero);
+                splash.Close();
                 MessageBox.Show(
                     $"Não foi possível iniciar o aplicativo:\n\n{ex.Message}",
                     "Erro ao iniciar", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -67,13 +84,54 @@ namespace Busca_BT
             }
         }
 
-        private async Task RunStartupAsync(StartupEventArgs e)
+        private async Task RunStartupAsync(StartupEventArgs e, SplashWindow splash)
         {
-            Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
-                Wpf.Ui.Appearance.ApplicationTheme.Light,
-                Wpf.Ui.Controls.WindowBackdropType.Mica);
+            // Montagem do host e conexão com o banco rodam fora da thread da UI,
+            // para a animação da tela de abertura não travar.
+            _host = await Task.Run(() => BuildHost(e.Args));
+            ServiceProvider = _host.Services;
 
-            _host = Host.CreateDefaultBuilder(e.Args)
+            splash.SetStatus("Conectando ao banco de dados…");
+            var dbReady = await Task.Run(TryInitializeDatabaseAsync);
+
+            splash.SetStatus("Carregando invoices…");
+
+            // Configure navigation maps
+            var nav = ServiceProvider.GetRequiredService<INavigationService>();
+            nav.MapsTo<TemplateUpdateViewModel, TemplateUpdateWindow>();
+            nav.MapsTo<HistoricoViewModel, HistoricoWindow>();
+            nav.MapsTo<HomeViewModel, HomeView>();
+            nav.MapsTo<HelpViewModel, HelpView>();
+            nav.MapsTo<SettingsViewModel, SettingsView>();
+
+            // Register converters in Application resources so XAML can reference by key
+            Current.Resources["NullToVisibilityConverter"] = new NullToVisibilityConverter();
+            Current.Resources["NotNullToBoolConverter"] = new NotNullToBoolConverter();
+            Current.Resources["StringNotEmptyToBoolConverter"] = new StringNotEmptyToBoolConverter();
+
+            var mainWindow = ServiceProvider.GetRequiredService<MainWindow>();
+            MainWindow = mainWindow; // a splash foi a primeira janela; a principal é esta
+
+            // Só tira a splash depois que a janela principal terminou de desenhar.
+            var rendered = new TaskCompletionSource();
+            mainWindow.ContentRendered += (_, _) => rendered.TrySetResult();
+            mainWindow.Show();
+            await rendered.Task;
+            await splash.CloseWithFadeAsync();
+
+            if (!dbReady)
+            {
+                nav.NavigateTo<SettingsViewModel>();
+                MessageBox.Show(
+                    "Não foi possível conectar ao banco de dados configurado.\n\n" +
+                    "Ajuste o servidor na aba Configurações e clique em Salvar.",
+                    "Conexão indisponível", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private static IHost BuildHost(string[] args)
+        {
+            return Host.CreateDefaultBuilder(args)
                 .ConfigureAppConfiguration((context, config) =>
                 {
                     // appsettings.json embutido no .exe (LogicalName definido no .csproj)
@@ -100,7 +158,7 @@ namespace Busca_BT
                         logging.SetMinimumLevel(LogLevel.Information);
                     });
 
-                    services.AddLabelSystem(context.Configuration);
+                    services.AddLabelSystem();
 
                     // Navigation infrastructure
                     services.AddSingleton<INavigationService, NavigationService>();
@@ -126,35 +184,6 @@ namespace Busca_BT
                     services.AddTransient<MainWindow>();
                 })
                 .Build();
-
-            ServiceProvider = _host.Services;
-
-            var dbReady = await TryInitializeDatabaseAsync();
-
-            // Configure navigation maps
-            var nav = ServiceProvider.GetRequiredService<INavigationService>();
-            nav.MapsTo<TemplateUpdateViewModel, TemplateUpdateWindow>();
-            nav.MapsTo<HistoricoViewModel, HistoricoWindow>();
-            nav.MapsTo<HomeViewModel, HomeView>();
-            nav.MapsTo<HelpViewModel, HelpView>();
-            nav.MapsTo<SettingsViewModel, SettingsView>();
-
-            // Register converters in Application resources so XAML can reference by key
-            Current.Resources["NullToVisibilityConverter"] = new NullToVisibilityConverter();
-            Current.Resources["NotNullToBoolConverter"] = new NotNullToBoolConverter();
-            Current.Resources["StringNotEmptyToBoolConverter"] = new StringNotEmptyToBoolConverter();
-
-            var mainWindow = ServiceProvider.GetRequiredService<MainWindow>();
-            mainWindow.Show();
-
-            if (!dbReady)
-            {
-                nav.NavigateTo<SettingsViewModel>();
-                MessageBox.Show(
-                    "Não foi possível conectar ao banco de dados configurado.\n\n" +
-                    "Ajuste o servidor na aba Configurações e clique em Salvar.",
-                    "Conexão indisponível", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
         }
 
         private async Task<bool> TryInitializeDatabaseAsync()

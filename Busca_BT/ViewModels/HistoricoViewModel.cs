@@ -116,7 +116,7 @@ namespace Busca_BT.ViewModels
             if (param is not ImportBatchRecord batch) return;
 
             var confirm = _dialog.AskConfirmation("Confirmar exclusão",
-                $"Excluir a importação:\n\n{batch.FileName}\n{batch.ImportedAt:dd/MM/yyyy HH:mm}\n\n" +
+                $"Excluir a importação:\n\n{batch.FileName}\n{batch.ImportedAtLocal:dd/MM/yyyy HH:mm}\n\n" +
                 $"Isso removerá {batch.ImportedRows} registros do banco.");
 
             if (!confirm) return;

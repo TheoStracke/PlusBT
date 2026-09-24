@@ -1,16 +1,12 @@
-﻿using Busca_BT.Data;
-using Busca_BT.Models;
+using Busca_BT.Data;
 using Busca_BT.Services;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Busca_BT.Infrastructure
 {
     public static class ServiceCollectionExtensions
     {
-        public static IServiceCollection AddLabelSystem(
-            this IServiceCollection services,
-            IConfiguration configuration)
+        public static IServiceCollection AddLabelSystem(this IServiceCollection services)
         {
             services.AddSingleton<IConnectionSettingsStore, ConnectionSettingsStore>();
 
@@ -26,23 +22,13 @@ namespace Busca_BT.Infrastructure
                 };
             });
 
-            services.AddSingleton(new EtiquetasOptions
-            {
-                PastaArquivos = configuration[$"{EtiquetasOptions.Section}:PastaArquivos"] ?? string.Empty
-            });
-
-            services.Configure<BartenderOptions>(
-                configuration.GetSection(BartenderOptions.Section));
-
             services.AddSingleton<IDbConnectionFactory, SqlServerConnectionFactory>();
             services.AddSingleton<ISqlServerDiscoveryService, SqlServerDiscoveryService>();
             services.AddSingleton<DatabaseInitializer>();
 
             services.AddSingleton<ILabelRepository, LabelRepository>();
             services.AddSingleton<IExcelImportService, ExcelImportService>();
-            services.AddSingleton<IFileUpdateService, FileUpdateService>();
-            services.AddSingleton<IBartenderService, BartenderService>();
-            services.AddSingleton<IBartenderLocator, BartenderLocator>();
+            services.AddSingleton<IInvoiceReportService, InvoiceReportService>();
 
             return services;
         }
@@ -61,51 +47,3 @@ namespace Busca_BT.Infrastructure
         }
     }
 }
-
-/*
-─────────────────────────────────────────────────────────────────────────────
- App.xaml.cs  (WPF — exemplo de bootstrap completo)
-─────────────────────────────────────────────────────────────────────────────
-
-protected override async void OnStartup(StartupEventArgs e)
-{
-    base.OnStartup(e);
-
-    _host = Host.CreateDefaultBuilder()
-        .ConfigureAppConfiguration(cfg =>
-            cfg.AddJsonFile("appsettings.json"))
-        .ConfigureServices((ctx, services) =>
-        {
-            services.AddLabelSystem(ctx.Configuration);
-            services.AddTransient<MainWindow>();
-            services.AddTransient<MainViewModel>();
-        })
-        .Build();
-
-    await AppStartup.InitializeDatabaseAsync(_host.Services);
-    _host.Start();
-
-    _host.Services.GetRequiredService<MainWindow>().Show();
-}
-
-─────────────────────────────────────────────────────────────────────────────
- appsettings.json
-─────────────────────────────────────────────────────────────────────────────
-
-{
-  "Database": {
-    "ConnectionString": "Data Source=%APPDATA%\\Busca_BT\\labels.db"
-  },
-  "Bartender": {
-    "ExecutablePath": "C:\\Program Files (x86)\\Seagull\\BarTender 2016\\bartend.exe",
-    "StartupTimeoutMs": 3000,
-    "SilentPrint": false
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Busca_BT": "Debug"
-    }
-  }
-}
-*/
