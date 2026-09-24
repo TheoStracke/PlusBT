@@ -18,7 +18,7 @@ namespace Busca_BT.ViewModels
         {
             Invoice = invoice;
             _all = labels;
-            Folhas = EspelhoCalculator.CalcularFolhas(labels.Count);
+            TotalEtiquetas = labels.Sum(l => l.QtdInvoice);
 
             // Quando um rótulo vira "Aberto", a barra de progresso é recalculada na hora.
             foreach (var label in _all)
@@ -34,15 +34,15 @@ namespace Busca_BT.ViewModels
         public ObservableCollection<LabelRecord> Items { get; } = new();
 
         public int Total => _all.Count;
-        public int Folhas { get; }
+        /// <summary>Etiquetas físicas a imprimir: soma da Qtd Invoice dos itens.</summary>
+        public int TotalEtiquetas { get; }
         public int Abertas => _all.Count(l => l.FoiAberta);
 
         public double Progresso => Total == 0 ? 0 : Abertas * 100.0 / Total;
         public bool Concluida => Total > 0 && Abertas == Total;
 
         public string ProgressoTexto => $"{Abertas}/{Total}";
-        public string ResumoTexto =>
-            $"{(Total == 1 ? "1 etiqueta" : $"{Total} etiquetas")}  ·  {(Folhas == 1 ? "1 folha" : $"{Folhas} folhas")}";
+        public string ResumoTexto => $"{Contagem.Itens(Total)}  ·  {Contagem.Etiquetas(TotalEtiquetas)}";
 
         private bool _isExpanded;
         public bool IsExpanded

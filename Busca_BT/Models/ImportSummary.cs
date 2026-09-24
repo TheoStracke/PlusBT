@@ -1,11 +1,12 @@
+using Busca_BT.Infrastructure;
 using System.IO;
 
 namespace Busca_BT.Models;
 
 /// <summary>Grupo de etiquetas importadas de uma mesma invoice (exibido no modal de resumo).</summary>
-public sealed record ImportedInvoiceGroup(string Invoice, int Quantidade)
+public sealed record ImportedInvoiceGroup(string Invoice, int Quantidade, int Etiquetas)
 {
-    public string QuantidadeTexto => Quantidade == 1 ? "1 etiqueta" : $"{Quantidade} etiquetas";
+    public string QuantidadeTexto => $"{Contagem.Itens(Quantidade)}  ·  {Contagem.Etiquetas(Etiquetas)}";
 }
 
 /// <summary>Dados do modal exibido ao final de uma importação de planilha.</summary>
@@ -26,9 +27,9 @@ public sealed class ImportSummary
 
     public string Titulo => Success ? "Planilha importada" : "Planilha não importada";
 
-    public string ImportadosTexto => TotalImportados == 1
-        ? "1 etiqueta importada"
-        : $"{TotalImportados} etiquetas importadas";
+    public string ImportadosTexto =>
+        $"{Contagem.Texto(TotalImportados, "item importado", "itens importados")}  ·  " +
+        Contagem.Etiquetas(Importados.Sum(g => g.Etiquetas));
 
     public string NaoImportadosTexto => NaoImportados.Count == 1
         ? "1 linha não importada"
@@ -62,7 +63,7 @@ public sealed class ImportSummary
         ErrorMessage = result.ErrorMessage,
         Importados = result.Imported
             .GroupBy(l => l.Invoice)
-            .Select(g => new ImportedInvoiceGroup(g.Key, g.Count()))
+            .Select(g => new ImportedInvoiceGroup(g.Key, g.Count(), g.Sum(l => l.QtdInvoice)))
             .ToList(),
         NaoImportados = result.Skipped
     };

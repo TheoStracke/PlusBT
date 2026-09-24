@@ -26,7 +26,6 @@ namespace Busca_BT.ViewModels
         private const int SuccessAnimationMs = 1600;
 
         private List<LabelRecord> _allRecords = new();
-        private List<ImportBatchRecord> _allBatches = new();
         private List<InvoiceGroupViewModel> _allGroups = new();
 
         /// <summary>Invoices exibidas na Home (uma linha por invoice, expansível).</summary>
@@ -88,9 +87,15 @@ namespace Busca_BT.ViewModels
         public bool HasFila => _allRecords.Count > 0;
 
         public string ConfirmClearTexto =>
-            $"{(_allRecords.Count == 1 ? "1 etiqueta" : $"{_allRecords.Count} etiquetas")} de " +
-            $"{(_allGroups.Count == 1 ? "1 invoice" : $"{_allGroups.Count} invoices")} serão removidas da fila, " +
+            $"{Contagem.Invoices(_allGroups.Count)} ({Contagem.Itens(_allRecords.Count)}, " +
+            $"{Contagem.Etiquetas(TotalEtiquetas)}) serão removidas da fila, " +
             "incluindo o progresso dos rótulos já abertos. O histórico de importações e os relatórios salvos não são apagados.";
+
+        /// <summary>Etiquetas físicas da fila inteira: soma da Qtd Invoice.</summary>
+        public int TotalEtiquetas => _allGroups.Sum(g => g.TotalEtiquetas);
+
+        /// <summary>Linha de resumo da Home: "7 invoices · 1.042 etiquetas no total".</summary>
+        public string ResumoFila => $"{Contagem.Invoices(_allGroups.Count)}  ·  {Contagem.Etiquetas(TotalEtiquetas)} no total";
 
         private ImportSummary? _summary;
         public ImportSummary? Summary
@@ -98,18 +103,6 @@ namespace Busca_BT.ViewModels
             get => _summary;
             private set => SetProperty(ref _summary, value);
         }
-
-        public string StatTotal => _allRecords.Count.ToString();
-        public string StatVinculados => _allRecords.Count(l => l.HasFile).ToString();
-        public string StatSemArquivo => _allRecords.Count(l => !l.HasFile).ToString();
-        public string StatImportacoes => _allBatches.Count.ToString();
-        public string StatInvoices => _allGroups.Count == 1 ? "1 invoice" : $"{_allGroups.Count} invoices";
-
-        private int _statEtiquetasValue;
-        public string StatEtiquetas => _statEtiquetasValue.ToString();
-
-        private int _statFolhasValue;
-        public string StatFolhas => _statFolhasValue.ToString();
 
         public ICommand LoadCommand { get; }
         public ICommand ImportCommand { get; }
@@ -189,7 +182,6 @@ namespace Busca_BT.ViewModels
         public async Task LoadAsync()
         {
             _allRecords = (await _labelRepository.GetAllAsync()).ToList();
-            _allBatches = (await _labelRepository.GetBatchesAsync()).ToList();
 
             // Uma linha por invoice, na ordem em que aparecem na planilha.
             // Mantém abertas as invoices que o usuário já tinha expandido.
@@ -204,20 +196,9 @@ namespace Busca_BT.ViewModels
                 })
                 .ToList();
 
-            // Folhas de espelho: calculadas por invoice e somadas (cada invoice
-            // começa uma folha nova). Não dependem da busca, para o número não
-            // oscilar enquanto o usuário procura um item específico.
-            _statEtiquetasValue = _allRecords.Count;
-            _statFolhasValue = _allGroups.Sum(g => g.Folhas);
-
             ApplyFilters();
-            RaisePropertyChanged(nameof(StatTotal));
-            RaisePropertyChanged(nameof(StatVinculados));
-            RaisePropertyChanged(nameof(StatSemArquivo));
-            RaisePropertyChanged(nameof(StatImportacoes));
-            RaisePropertyChanged(nameof(StatEtiquetas));
-            RaisePropertyChanged(nameof(StatFolhas));
-            RaisePropertyChanged(nameof(StatInvoices));
+            // Totais da fila inteira (não mudam com a busca).
+            RaisePropertyChanged(nameof(ResumoFila));
             RaisePropertyChanged(nameof(HasFila));
             CommandManager.InvalidateRequerySuggested(); // "Limpar fila" liga/desliga conforme a fila
         }

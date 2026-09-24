@@ -79,7 +79,8 @@ namespace Busca_BT.Services
             // ── Resumo: local, folhas de espelho, etiquetas ───────────────
             EscreverResumo(ws, 2, 1, "Local", string.IsNullOrWhiteSpace(local) ? "Não informado" : local.ToUpperInvariant());
             EscreverResumo(ws, 2, 4, "Folhas de espelho", folhas);
-            EscreverResumo(ws, 2, 6, "Etiquetas", linhas.Count);
+            // Etiquetas físicas = soma da Qtd Invoice (as folhas de espelho contam itens/linhas).
+            EscreverResumo(ws, 2, 6, "Etiquetas", linhas.Sum(l => l.QtdInvoice));
 
             var rodape = ws.Range(3, 1, 3, ultimaColuna).Merge();
             rodape.Value = $"Planilha de origem: {origem}   ·   Gerado em {geradoEm:dd/MM/yyyy HH:mm}";
