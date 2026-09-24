@@ -21,7 +21,6 @@ namespace Busca_BT.Services
         ILabelRepository repository,
         ILogger<ExcelImportService> logger) : IExcelImportService
     {
-        private const string SheetName = "Planilha1";
         private const int HeaderRow = 1;
 
         // Colunas obrigatórias: nome lógico do campo -> variações de cabeçalho aceitas
@@ -73,12 +72,10 @@ namespace Busca_BT.Services
                 using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 using var workbook = new XLWorkbook(stream);
 
-                if (!workbook.TryGetWorksheet(SheetName, out var sheet))
-                {
-                    var available = string.Join(", ", workbook.Worksheets.Select(w => w.Name));
-                    return ImportResult.Fail(
-                        $"Aba '{SheetName}' não encontrada. Abas disponíveis: {available}");
-                }
+                // Sempre a primeira aba da planilha, qualquer que seja o nome dela.
+                var sheet = workbook.Worksheets.OrderBy(w => w.Position).FirstOrDefault();
+                if (sheet is null)
+                    return ImportResult.Fail("A planilha não tem nenhuma aba.");
 
                 var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 1;
                 var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 1;
