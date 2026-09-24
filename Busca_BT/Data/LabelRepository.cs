@@ -24,6 +24,7 @@ namespace Busca_BT.Data
         Task<IEnumerable<ImportBatchRecord>> GetBatchesAsync(CancellationToken ct = default);
         Task DeleteBatchAsync(int batchId, CancellationToken ct = default);
         Task<int> ReplaceAllAsync(IEnumerable<LabelRecord> records, int batchId);
+        Task<int> ClearQueueAsync(); // Apaga a fila atual (o histórico de importações é mantido)
         Task<int> UpsertTemplatesAsync(IEnumerable<(string FileName, string FilePath)> templates);
     }
 
@@ -205,6 +206,22 @@ namespace Busca_BT.Data
             }
         }
 
+        public async Task<int> ClearQueueAsync()
+        {
+            try
+            {
+                await using var conn = (SqlConnection)await factory.OpenAsync();
+                var rows = await conn.ExecuteAsync("DELETE FROM dbo.Labels;");
+                LogQueueCleared(logger, rows);
+                return rows;
+            }
+            catch (Exception ex)
+            {
+                LogClearQueueError(logger, ex);
+                throw;
+            }
+        }
+
         public async Task<int> ReplaceAllAsync(IEnumerable<LabelRecord> records, int batchId)
         {
             const string sqlDelete = "DELETE FROM dbo.Labels;";
@@ -328,6 +345,12 @@ namespace Busca_BT.Data
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao criar registro de lote para '{FileName}'")]
         private static partial void LogCreateBatchError(ILogger logger, string fileName, Exception ex);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Fila limpa: {Count} etiqueta(s) removida(s)")]
+        private static partial void LogQueueCleared(ILogger logger, int count);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao limpar a fila de etiquetas")]
+        private static partial void LogClearQueueError(ILogger logger, Exception ex);
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao buscar etiquetas do lote")]
         private static partial void LogGetBatchesError(ILogger logger, Exception ex);

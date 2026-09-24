@@ -68,7 +68,29 @@ namespace Busca_BT.ViewModels
             private set { if (SetProperty(ref _isSummaryOpen, value)) RaisePropertyChanged(nameof(IsOverlayVisible)); }
         }
 
-        public bool IsOverlayVisible => IsImporting || IsSuccessAnimation || IsSummaryOpen;
+        // Modal de confirmação de "Limpar fila".
+        private bool _isConfirmClearOpen;
+        public bool IsConfirmClearOpen
+        {
+            get => _isConfirmClearOpen;
+            private set { if (SetProperty(ref _isConfirmClearOpen, value)) RaisePropertyChanged(nameof(IsOverlayVisible)); }
+        }
+
+        private bool _isClearing;
+        public bool IsClearing
+        {
+            get => _isClearing;
+            private set => SetProperty(ref _isClearing, value);
+        }
+
+        public bool IsOverlayVisible => IsImporting || IsSuccessAnimation || IsSummaryOpen || IsConfirmClearOpen;
+
+        public bool HasFila => _allRecords.Count > 0;
+
+        public string ConfirmClearTexto =>
+            $"{(_allRecords.Count == 1 ? "1 etiqueta" : $"{_allRecords.Count} etiquetas")} de " +
+            $"{(_allGroups.Count == 1 ? "1 invoice" : $"{_allGroups.Count} invoices")} serão removidas da fila, " +
+            "incluindo o progresso dos rótulos já abertos. O histórico de importações e os relatórios salvos não são apagados.";
 
         private ImportSummary? _summary;
         public ImportSummary? Summary
@@ -94,6 +116,9 @@ namespace Busca_BT.ViewModels
         public ICommand OpenCommand { get; }
         public ICommand CloseSummaryCommand { get; }
         public ICommand OpenReportFolderCommand { get; }
+        public ICommand AskClearQueueCommand { get; }
+        public ICommand CancelClearQueueCommand { get; }
+        public ICommand ConfirmClearQueueCommand { get; }
 
         public HomeViewModel(
             IExcelImportService excelImportService,
@@ -113,6 +138,36 @@ namespace Busca_BT.ViewModels
             OpenCommand = new RelayCommand(async p => await OpenAsync(p));
             CloseSummaryCommand = new RelayCommand(() => IsSummaryOpen = false);
             OpenReportFolderCommand = new RelayCommand(OpenReportFolder);
+
+            AskClearQueueCommand = new RelayCommand(() =>
+            {
+                RaisePropertyChanged(nameof(ConfirmClearTexto));
+                IsConfirmClearOpen = true;
+            }, () => HasFila && !IsOverlayVisible);
+            CancelClearQueueCommand = new RelayCommand(() => IsConfirmClearOpen = false, () => !IsClearing);
+            ConfirmClearQueueCommand = new RelayCommand(async () => await ClearQueueAsync(), () => !IsClearing);
+        }
+
+        private async Task ClearQueueAsync()
+        {
+            IsClearing = true;
+            try
+            {
+                await _labelRepository.ClearQueueAsync();
+                SearchTerm = string.Empty;
+                await LoadAsync();
+                IsConfirmClearOpen = false;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[LIMPAR FILA] Falha ao limpar a fila");
+                IsConfirmClearOpen = false;
+                _dialog.ShowError("Limpar fila", $"Não foi possível limpar a fila.\n\n{ex.Message}");
+            }
+            finally
+            {
+                IsClearing = false;
+            }
         }
 
         private void OpenReportFolder()
@@ -163,6 +218,8 @@ namespace Busca_BT.ViewModels
             RaisePropertyChanged(nameof(StatEtiquetas));
             RaisePropertyChanged(nameof(StatFolhas));
             RaisePropertyChanged(nameof(StatInvoices));
+            RaisePropertyChanged(nameof(HasFila));
+            CommandManager.InvalidateRequerySuggested(); // "Limpar fila" liga/desliga conforme a fila
         }
 
         private void ApplyFilters()

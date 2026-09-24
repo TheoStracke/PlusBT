@@ -17,11 +17,18 @@
                 <TextBlock DockPanel.Dock="Left" Text="Lista de Invoices"
                            FontSize="24" FontWeight="SemiBold"
                            VerticalAlignment="Center"/>
-                <ui:Button DockPanel.Dock="Right"
-                           Content="Importar planilha"
-                           Icon="{ui:SymbolIcon DocumentArrowUp20}"
-                           Appearance="Primary"
-                           Command="{Binding ImportCommand}"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <ui:Button Content="Limpar fila"
+                               Icon="{ui:SymbolIcon Delete20}"
+                               Appearance="Secondary"
+                               Margin="0,0,8,0"
+                               ToolTip="Remove todas as etiquetas da fila atual"
+                               Command="{Binding AskClearQueueCommand}"/>
+                    <ui:Button Content="Importar planilha"
+                               Icon="{ui:SymbolIcon DocumentArrowUp20}"
+                               Appearance="Primary"
+                               Command="{Binding ImportCommand}"/>
+                </StackPanel>
             </DockPanel>
 
             <!-- Busca -->
@@ -230,6 +237,25 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+
+            <!-- Fila vazia -->
+            <StackPanel Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel.Style>
+                    <Style TargetType="{x:Type StackPanel}">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasFila}" Value="False">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <ui:SymbolIcon Symbol="DocumentArrowUp20" FontSize="40" Opacity="0.4" HorizontalAlignment="Center"/>
+                <TextBlock Text="A fila está vazia" FontSize="16" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                <TextBlock Text="Importe uma planilha para montar a fila de rótulos." FontSize="12" Opacity="0.65"
+                           HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
         </Grid>
 
         <!-- ══ OVERLAY DE IMPORTAÇÃO ═════════════════════════════════════
@@ -503,6 +529,37 @@
                         </StackPanel>
                     </DockPanel>
                 </Grid>
+            </Border>
+
+            <!-- 4. Confirmação de "Limpar fila" -->
+            <Border Width="460" CornerRadius="12" Padding="28,24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="{DynamicResource ApplicationBackgroundBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                    Visibility="{Binding IsConfirmClearOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,16">
+                        <Grid DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,14,0" VerticalAlignment="Center">
+                            <Ellipse Fill="{DynamicResource SystemFillColorCriticalBackgroundBrush}"/>
+                            <ui:SymbolIcon Symbol="Delete24" FontSize="22"
+                                           Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <TextBlock Text="Limpar a fila?" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </DockPanel>
+
+                    <TextBlock Text="{Binding ConfirmClearTexto}" FontSize="13" TextWrapping="Wrap" Opacity="0.85"/>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                        <ui:ProgressRing IsIndeterminate="True" Width="20" Height="20" Margin="0,0,12,0"
+                                         Visibility="{Binding IsClearing, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <ui:Button Content="Cancelar" Appearance="Secondary" MinWidth="100" Margin="0,0,8,0"
+                                   Command="{Binding CancelClearQueueCommand}"/>
+                        <ui:Button Content="Limpar fila" Appearance="Danger" MinWidth="120"
+                                   Icon="{ui:SymbolIcon Delete20}"
+                                   Command="{Binding ConfirmClearQueueCommand}"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
     </Grid>
