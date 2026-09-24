@@ -29,7 +29,8 @@ namespace Busca_BT.Services
             "Lote", "Validade", "Registro ANVISA", "LPN"
         ];
 
-        private static readonly double[] Larguras = [7, 18, 13, 50, 11, 14, 12, 17, 18];
+        // Larguras pensadas para A4 retrato (a descrição quebra linha; os cabeçalhos também).
+        private static readonly double[] Larguras = [5, 15, 10, 32, 7, 11, 10.5, 13, 14];
 
         public Task<InvoiceReportResult> GerarAsync(IReadOnlyList<LabelRecord> records, string planilhaOrigem)
             => Task.Run(() => Gerar(records, planilhaOrigem));
@@ -93,7 +94,9 @@ namespace Busca_BT.Services
             cabecalho.Style.Font.SetBold().Font.SetFontColor(XLColor.White)
                 .Fill.SetBackgroundColor(XLColor.FromHtml("#1F4E79"))
                 .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
-            ws.Row(linhaCabecalho).Height = 20;
+            cabecalho.Style.Alignment.SetWrapText()
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+            ws.Row(linhaCabecalho).Height = 30;
 
             // ── Linhas ────────────────────────────────────────────────────
             var r = linhaCabecalho + 1;
@@ -132,14 +135,16 @@ namespace Busca_BT.Services
             for (int c = 0; c < Larguras.Length; c++)
                 ws.Column(c + 1).Width = Larguras[c];
             ws.Column(4).Style.Alignment.SetWrapText();
+            // Descrição longa quebra em várias linhas: os demais campos ficam centralizados na altura.
+            tabela.Style.Alignment.SetVertical(XLAlignmentVerticalValues.Center);
 
             // ── Visualização e impressão ──────────────────────────────────
             ws.SheetView.FreezeRows(linhaCabecalho);
-            ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
+            ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
             ws.PageSetup.PaperSize = XLPaperSize.A4Paper;
             ws.PageSetup.FitToPages(1, 0); // cabe na largura da folha
             ws.PageSetup.SetRowsToRepeatAtTop(linhaCabecalho, linhaCabecalho);
-            ws.PageSetup.Margins.SetLeft(0.4).SetRight(0.4).SetTop(0.5).SetBottom(0.5);
+            ws.PageSetup.Margins.SetLeft(0.3).SetRight(0.3).SetTop(0.5).SetBottom(0.5);
         }
 
         private static void EscreverResumo(IXLWorksheet ws, int row, int col, string rotulo, XLCellValue valor)
