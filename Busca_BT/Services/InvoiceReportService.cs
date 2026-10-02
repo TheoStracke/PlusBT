@@ -109,8 +109,16 @@ namespace Busca_BT.Services
                 ws.Cell(r, 4).Value = l.DescricaoAnvisa;
                 ws.Cell(r, 5).Value = l.QtdInvoice;
                 ws.Cell(r, 6).Value = l.Lote;
-                ws.Cell(r, 7).Value = l.Validade;
-                ws.Cell(r, 7).Style.DateFormat.Format = "dd/MM/yyyy";
+                if (l.Validade is DateTime validade)
+                {
+                    ws.Cell(r, 7).Value = validade;
+                    ws.Cell(r, 7).Style.DateFormat.Format = "dd/MM/yyyy";
+                }
+                else
+                {
+                    // Validade inválida na planilha: mostra o texto original (destacado abaixo).
+                    ws.Cell(r, 7).Value = l.ValidadeTexto ?? "—";
+                }
                 ws.Cell(r, 8).Value = l.RegistroAnvisa;
                 ws.Cell(r, 9).Value = l.Lpn;
 
@@ -120,6 +128,11 @@ namespace Busca_BT.Services
 
                 if ((r - linhaCabecalho) % 2 == 0)
                     ws.Range(r, 1, r, ultimaColuna).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F2F6FA"));
+
+                // Depois do zebrado, para o destaque não ser coberto.
+                if (l.Validade is null)
+                    ws.Cell(r, 7).Style.Font.SetFontColor(XLColor.FromHtml("#C00000")).Font.SetBold()
+                        .Fill.SetBackgroundColor(XLColor.FromHtml("#FDE2E2"));
 
                 r++;
             }

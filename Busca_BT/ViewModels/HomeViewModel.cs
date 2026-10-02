@@ -42,6 +42,25 @@ namespace Busca_BT.ViewModels
             }
         }
 
+        // Mostra só os rótulos com pendência (sem template, data inválida…).
+        private bool _somentePendencias;
+        public bool SomentePendencias
+        {
+            get => _somentePendencias;
+            set
+            {
+                if (SetProperty(ref _somentePendencias, value))
+                    ApplyFilters();
+            }
+        }
+
+        /// <summary>Rótulos da fila com alguma pendência.</summary>
+        public int TotalPendencias => _allRecords.Count(l => l.TemPendencia);
+        public bool HasPendencias => TotalPendencias > 0;
+        public string PendenciasTexto => TotalPendencias == 1
+            ? "1 item com pendência"
+            : $"{TotalPendencias.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"))} itens com pendência";
+
         // ── Estado do overlay de importação ──────────────────────────────────
         // Processando (spinner) → Sucesso (check verde animado) → Resumo (modal).
         // Em caso de falha vai direto do Processando para o Resumo.
@@ -82,7 +101,25 @@ namespace Busca_BT.ViewModels
             private set => SetProperty(ref _isClearing, value);
         }
 
-        public bool IsOverlayVisible => IsImporting || IsSuccessAnimation || IsSummaryOpen || IsConfirmClearOpen;
+        // Modal de ciência: rótulo com pendência só abre depois de marcar todas as caixas.
+        private bool _isCienciaOpen;
+        public bool IsCienciaOpen
+        {
+            get => _isCienciaOpen;
+            private set { if (SetProperty(ref _isCienciaOpen, value)) RaisePropertyChanged(nameof(IsOverlayVisible)); }
+        }
+
+        private LabelRecord? _cienciaLabel;
+        public LabelRecord? CienciaLabel
+        {
+            get => _cienciaLabel;
+            private set => SetProperty(ref _cienciaLabel, value);
+        }
+
+        /// <summary>Uma caixa de seleção por pendência do rótulo que o usuário quer abrir.</summary>
+        public ObservableCollection<CienciaItem> CienciaItens { get; } = new();
+
+        public bool IsOverlayVisible => IsImporting || IsSuccessAnimation || IsSummaryOpen || IsConfirmClearOpen || IsCienciaOpen;
 
         public bool HasFila => _allRecords.Count > 0;
 
@@ -112,6 +149,8 @@ namespace Busca_BT.ViewModels
         public ICommand AskClearQueueCommand { get; }
         public ICommand CancelClearQueueCommand { get; }
         public ICommand ConfirmClearQueueCommand { get; }
+        public ICommand CancelCienciaCommand { get; }
+        public ICommand ConfirmCienciaCommand { get; }
 
         public HomeViewModel(
             IExcelImportService excelImportService,
@@ -139,6 +178,10 @@ namespace Busca_BT.ViewModels
             }, () => HasFila && !IsOverlayVisible);
             CancelClearQueueCommand = new RelayCommand(() => IsConfirmClearOpen = false, () => !IsClearing);
             ConfirmClearQueueCommand = new RelayCommand(async () => await ClearQueueAsync(), () => !IsClearing);
+
+            CancelCienciaCommand = new RelayCommand(FecharCiencia);
+            ConfirmCienciaCommand = new RelayCommand(async () => await ConfirmarCienciaAsync(),
+                () => CienciaItens.Count > 0 && CienciaItens.All(i => i.Ciente));
         }
 
         private async Task ClearQueueAsync()
@@ -183,6 +226,23 @@ namespace Busca_BT.ViewModels
         {
             _allRecords = (await _labelRepository.GetAllAsync()).ToList();
 
+            // Vínculo com os templates + pendências de cada rótulo. Se a leitura do acervo
+            // falhar, a fila aparece mesmo assim (todos sinalizados como sem template).
+            IEnumerable<LabelRecord> templates;
+            try
+            {
+                templates = await _labelRepository.GetAllTemplatesMasterAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "[FILA] Falha ao ler os templates; a fila será exibida sem vínculo");
+                templates = [];
+            }
+            await Task.Run(() => LabelDiagnostics.Aplicar(_allRecords, templates.ToList(), DateTime.Today));
+
+            if (!HasPendencias)
+                _somentePendencias = false;
+
             // Uma linha por invoice, na ordem em que aparecem na planilha.
             // Mantém abertas as invoices que o usuário já tinha expandido.
             var expandidas = _allGroups.Where(g => g.IsExpanded).Select(g => g.Invoice)
@@ -200,6 +260,10 @@ namespace Busca_BT.ViewModels
             // Totais da fila inteira (não mudam com a busca).
             RaisePropertyChanged(nameof(ResumoFila));
             RaisePropertyChanged(nameof(HasFila));
+            RaisePropertyChanged(nameof(TotalPendencias));
+            RaisePropertyChanged(nameof(HasPendencias));
+            RaisePropertyChanged(nameof(PendenciasTexto));
+            RaisePropertyChanged(nameof(SomentePendencias));
             CommandManager.InvalidateRequerySuggested(); // "Limpar fila" liga/desliga conforme a fila
         }
 
@@ -210,11 +274,11 @@ namespace Busca_BT.ViewModels
             Invoices.Clear();
             foreach (var group in _allGroups)
             {
-                if (!group.ApplyFilter(termo))
+                if (!group.ApplyFilter(termo, SomentePendencias))
                     continue;
 
                 // Buscando: abre as invoices encontradas para mostrar o rótulo.
-                if (termo.Length > 0)
+                if (termo.Length > 0 || SomentePendencias)
                     group.IsExpanded = true;
 
                 Invoices.Add(group);
@@ -269,12 +333,14 @@ namespace Busca_BT.ViewModels
                         erroRelatorio = $"Não foi possível salvar os relatórios: {ex.Message}";
                     }
 
-                    summary = ImportSummary.From(dialog.FileName, result, pasta, quantidade, erroRelatorio);
-
                     // A fila antiga já foi substituída no banco: limpa a busca para
                     // a planilha nova aparecer inteira e recarrega a grid.
                     SearchTerm = string.Empty;
                     await LoadAsync();
+
+                    // Pendências calculadas no carregamento (inclui o vínculo com os templates).
+                    summary = ImportSummary.From(dialog.FileName, result, pasta, quantidade, erroRelatorio,
+                        _allRecords.Where(l => l.TemPendencia).ToList());
                 }
                 else
                 {
@@ -321,8 +387,12 @@ namespace Busca_BT.ViewModels
                     _logger?.LogWarning("[ABRIR] Etiqueta SEM template | Invoice: {Invoice} | Código: {Codigo}",
                         label.Invoice, label.Codigo);
 
-                    _dialog.ShowWarning("Sem template",
-                        $"Esta etiqueta (Invoice: {label.Invoice}, Código: {label.Codigo}) não possui template vinculado.\n\n" +
+                    var motivos = label.TemPendencia
+                        ? string.Join("\n", label.Pendencias.Select(p => "• " + p))
+                        : "Nenhum template vinculado.";
+
+                    _dialog.ShowWarning("Não foi possível abrir",
+                        $"Invoice: {label.Invoice}\nCódigo: {label.Codigo}\n\n{motivos}\n\n" +
                         "Cadastre um arquivo .btw com esse código na tela Templates.");
                     return;
                 }
@@ -339,37 +409,90 @@ namespace Busca_BT.ViewModels
                     return;
                 }
 
-                // Abre com o programa padrão do Windows (.btw → BarTender, .pdf → leitor de PDF).
-                _logger?.LogInformation("[ABRIR] Abrindo arquivo com programa padrão: {Path}", label.LabelFilePath);
-                Process.Start(new ProcessStartInfo(label.LabelFilePath!)
+                // Rótulo com pendência (data inválida, vencido, campo vazio…): o template está
+                // vinculado, mas só abre depois que o usuário confirmar ciência de cada aviso.
+                if (label.TemPendencia)
                 {
-                    UseShellExecute = true
-                });
-                _logger?.LogInformation("[ABRIR] Arquivo aberto com sucesso");
+                    _logger?.LogInformation("[ABRIR] Etiqueta com pendência — pedindo ciência | Invoice: {Invoice} | Código: {Codigo}",
+                        label.Invoice, label.Codigo);
 
-                if (!label.FoiAberta)
-                {
-                    try
-                    {
-                        await _labelRepository.MarcarComoAbertaAsync(label.Id);
-                        // Notifica a linha (botão "Aberto") e a barra de progresso da invoice.
-                        label.AbertaEm = DateTime.UtcNow;
-                    }
-                    catch (Exception ex)
-                    {
-                        // Não fatal: o arquivo já foi aberto, só a marcação falhou.
-                        _logger?.LogWarning(ex, "[ABRIR] Falha ao marcar etiqueta Id={Id} como aberta", label.Id);
-                    }
+                    CienciaItens.Clear();
+                    foreach (var pendencia in label.Pendencias)
+                        CienciaItens.Add(new CienciaItem(pendencia));
+                    CienciaLabel = label;
+                    IsCienciaOpen = true;
+                    return;
                 }
+
+                await AbrirArquivoAsync(label);
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "[ABRIR] Exceção inesperada ao abrir etiqueta: {Invoice}", label?.Invoice);
-                _dialog.ShowError("Erro ao abrir etiqueta",
-                    $"Ocorreu um erro inesperado ao tentar abrir o template.\n\n" +
-                    $"Detalhes: {ex.Message}\n\n" +
-                    $"Etiqueta: {label?.Invoice}");
+                MostrarErroAoAbrir(label, ex);
             }
+        }
+
+        private void FecharCiencia()
+        {
+            IsCienciaOpen = false;
+            CienciaLabel = null;
+            CienciaItens.Clear();
+        }
+
+        private async Task ConfirmarCienciaAsync()
+        {
+            if (CienciaLabel is not { } label || !CienciaItens.All(i => i.Ciente))
+                return;
+
+            _logger?.LogWarning(
+                "[ABRIR] Usuário confirmou ciência das pendências e abriu mesmo assim | Invoice: {Invoice} | Código: {Codigo} | Pendências: {Pendencias}",
+                label.Invoice, label.Codigo, string.Join(" | ", label.Pendencias));
+
+            FecharCiencia();
+
+            try
+            {
+                await AbrirArquivoAsync(label);
+            }
+            catch (Exception ex)
+            {
+                MostrarErroAoAbrir(label, ex);
+            }
+        }
+
+        private async Task AbrirArquivoAsync(LabelRecord label)
+        {
+            // Abre com o programa padrão do Windows (.btw → BarTender, .pdf → leitor de PDF).
+            _logger?.LogInformation("[ABRIR] Abrindo arquivo com programa padrão: {Path}", label.LabelFilePath);
+            Process.Start(new ProcessStartInfo(label.LabelFilePath!)
+            {
+                UseShellExecute = true
+            });
+            _logger?.LogInformation("[ABRIR] Arquivo aberto com sucesso");
+
+            if (!label.FoiAberta)
+            {
+                try
+                {
+                    await _labelRepository.MarcarComoAbertaAsync(label.Id);
+                    // Notifica a linha (botão "Aberto") e a barra de progresso da invoice.
+                    label.AbertaEm = DateTime.UtcNow;
+                }
+                catch (Exception ex)
+                {
+                    // Não fatal: o arquivo já foi aberto, só a marcação falhou.
+                    _logger?.LogWarning(ex, "[ABRIR] Falha ao marcar etiqueta Id={Id} como aberta", label.Id);
+                }
+            }
+        }
+
+        private void MostrarErroAoAbrir(LabelRecord label, Exception ex)
+        {
+            _logger?.LogError(ex, "[ABRIR] Exceção inesperada ao abrir etiqueta: {Invoice}", label.Invoice);
+            _dialog.ShowError("Erro ao abrir etiqueta",
+                $"Ocorreu um erro inesperado ao tentar abrir o template.\n\n" +
+                $"Detalhes: {ex.Message}\n\n" +
+                $"Etiqueta: {label.Invoice}");
         }
     }
 }

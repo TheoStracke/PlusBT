@@ -204,6 +204,17 @@ public sealed class DatabaseInitializer
     private static readonly (string Table, string Column, string Definition)[] RequiredColumns =
     [
         ("Labels", "AbertaEm", "DATETIME NULL"),
+        // Texto original de uma validade inválida (a linha entra na fila com aviso).
+        ("Labels", "ValidadeTexto", "NVARCHAR(100) NULL"),
+        // Problemas encontrados na importação, um por linha.
+        ("Labels", "Avisos", "NVARCHAR(1000) NULL"),
+    ];
+
+    // Colunas que precisam aceitar NULL (criadas como NOT NULL em versões antigas).
+    private static readonly (string Table, string Column, string Type)[] NullableColumns =
+    [
+        // Validade inválida na planilha é gravada como NULL em vez de descartar a linha.
+        ("Labels", "Validade", "DATE"),
     ];
 
     private async Task ValidateSchemaAsync(CancellationToken ct)
@@ -258,6 +269,33 @@ public sealed class DatabaseInitializer
                     "Falha ao criar coluna {Table}.{Column} automaticamente. " +
                     "Se o usuário/login não tiver permissão de ALTER TABLE, crie manualmente.",
                     table, column);
+            }
+        }
+
+        foreach (var (table, column, type) in NullableColumns)
+        {
+            try
+            {
+                var notNull = await conn.ExecuteScalarAsync<int>("""
+                    SELECT COUNT(*) FROM sys.columns
+                    WHERE object_id = OBJECT_ID(@FullTable) AND name = @Column AND is_nullable = 0
+                    """,
+                    new { FullTable = $"dbo.{table}", Column = column });
+
+                if (notNull == 0)
+                    continue;
+
+                _logger.LogWarning(
+                    "Coluna {Table}.{Column} não aceita NULL — alterando automaticamente.", table, column);
+
+                await conn.ExecuteAsync($"ALTER TABLE dbo.{table} ALTER COLUMN {column} {type} NULL;");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Falha ao tornar a coluna {Table}.{Column} anulável. " +
+                    "Execute manualmente: ALTER TABLE dbo.{Table} ALTER COLUMN {Column} {Type} NULL;",
+                    table, column, table, column, type);
             }
         }
     }

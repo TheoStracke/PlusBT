@@ -16,7 +16,14 @@ namespace Busca_BT.Models
         public string DescricaoAnvisa { get; set; } = string.Empty;
         public int QtdInvoice { get; set; }
         public string Lote { get; set; } = string.Empty;
-        public DateTime Validade { get; set; }
+        /// <summary>Null quando a planilha trouxe uma data inválida (o texto original fica em <see cref="ValidadeTexto"/>).</summary>
+        public DateTime? Validade { get; set; }
+
+        /// <summary>Texto original da validade quando não foi possível interpretá-lo como data.</summary>
+        public string? ValidadeTexto { get; set; }
+
+        /// <summary>Validade para exibição: a data, ou o texto original quando inválida.</summary>
+        public string ValidadeExibicao => Validade?.ToString("dd/MM/yyyy") ?? ValidadeTexto ?? "—";
         public string RegistroAnvisa { get; set; } = string.Empty;
         public string Lpn { get; set; } = string.Empty;
 
@@ -55,5 +62,20 @@ namespace Busca_BT.Models
         public event PropertyChangedEventHandler? PropertyChanged;
 
         public bool HasFile => !string.IsNullOrWhiteSpace(LabelFilePath);
+
+        /// <summary>
+        /// Problemas encontrados na importação (data inválida, campo vazio…), um por linha.
+        /// Gravado no banco: a linha entra na fila mesmo com problema, só fica sinalizada.
+        /// </summary>
+        public string? Avisos { get; set; }
+
+        /// <summary>
+        /// Todos os problemas da etiqueta: os da importação + os de vínculo com o template
+        /// (calculados ao carregar a fila, ver <see cref="Infrastructure.LabelDiagnostics"/>).
+        /// </summary>
+        public IReadOnlyList<string> Pendencias { get; set; } = [];
+
+        public bool TemPendencia => Pendencias.Count > 0;
+        public string PendenciasTexto => string.Join("\n", Pendencias);
     }
 }

@@ -112,27 +112,25 @@ namespace Busca_BT.Services
 
                     totalRows++;
 
-                    if (TryParseRow(sheet, row, cols, precisaEtiquetaCol,
-                        out var record, out var error, out var filteredOut))
+                    // Filtro intencional da planilha: a linha não deve virar etiqueta.
+                    if (precisaEtiquetaCol is int filtroCol &&
+                        !AffirmativeValues.Contains(GetString(sheet, row, filtroCol), StringComparer.OrdinalIgnoreCase))
                     {
-                        var seq = itemPorInvoice.GetValueOrDefault(record!.Invoice) + 1;
-                        itemPorInvoice[record.Invoice] = seq;
-                        record.Item = seq; // Só conta linhas válidas e importadas
-                        records.Add(record);
+                        skipped.Add(new SkippedRow(row, GetString(sheet, row, cols["Codigo"]),
+                            "Marcada como \"não precisa de etiqueta\"."));
                         continue;
                     }
 
-                    var codigo = GetString(sheet, row, cols["Codigo"]);
+                    // Qualquer outro problema (data inválida, campo vazio…) NÃO tira a linha da
+                    // fila: ela entra sinalizada com o aviso, para o usuário ver e corrigir.
+                    var record = ParseRow(sheet, row, cols);
+                    if (record.Avisos is not null)
+                        LogRowWithWarnings(logger, row, record.Avisos);
 
-                    if (filteredOut)
-                    {
-                        skipped.Add(new SkippedRow(row, codigo, "Marcada como \"não precisa de etiqueta\"."));
-                    }
-                    else
-                    {
-                        skipped.Add(new SkippedRow(row, codigo, error!));
-                        LogRowSkipped(logger, row, error!);
-                    }
+                    var seq = itemPorInvoice.GetValueOrDefault(record.Invoice) + 1;
+                    itemPorInvoice[record.Invoice] = seq;
+                    record.Item = seq;
+                    records.Add(record);
                 }
 
                 if (records.Count == 0)
@@ -220,92 +218,102 @@ namespace Busca_BT.Services
 
         // ── Parse de linha individual ─────────────────────────────────────────
 
-        private static bool TryParseRow(
-            IXLWorksheet sheet,
-            int rowNum,
-            IReadOnlyDictionary<string, int> cols,
-            int? precisaEtiquetaCol,
-            out LabelRecord? record,
-            out string? error,
-            out bool filteredOut)
+        // Tamanhos das colunas em dbo.Labels: valor maior seria rejeitado pelo SQL e
+        // derrubaria a importação inteira, então é cortado e sinalizado.
+        private const int MaxTexto = 100;
+        private const int MaxDescricao = 500;
+        private const int MaxAvisos = 1000;
+
+        /// <summary>Texto usado quando a planilha não traz o número da invoice.</summary>
+        public const string SemInvoice = "SEM INVOICE";
+
+        /// <summary>
+        /// Lê uma linha sempre produzindo um registro. Cada problema encontrado vira um
+        /// aviso em <see cref="LabelRecord.Avisos"/> em vez de descartar a linha.
+        /// </summary>
+        private static LabelRecord ParseRow(IXLWorksheet sheet, int rowNum, IReadOnlyDictionary<string, int> cols)
         {
-            record = null;
-            error = null;
-            filteredOut = false;
+            var avisos = new List<string>();
 
-            try
+            string Texto(string campo, string nome, int max = MaxTexto, bool obrigatorio = true)
             {
-                if (precisaEtiquetaCol is int peCol)
+                if (!cols.TryGetValue(campo, out var col))
+                    return string.Empty;
+
+                string valor;
+                try { valor = GetString(sheet, rowNum, col); }
+                catch (Exception ex)
                 {
-                    var precisa = GetString(sheet, rowNum, peCol);
-                    if (!AffirmativeValues.Contains(precisa.Trim(), StringComparer.OrdinalIgnoreCase))
-                    {
-                        filteredOut = true;
-                        return false;
-                    }
+                    avisos.Add($"{nome}: não foi possível ler a célula ({ex.Message}).");
+                    return string.Empty;
                 }
 
-                var invoice = GetString(sheet, rowNum, cols["Invoice"]);
-                if (string.IsNullOrWhiteSpace(invoice))
-                { error = "Coluna 'Invoice' está vazia."; return false; }
+                if (obrigatorio && valor.Length == 0)
+                    avisos.Add($"{nome} vazio na planilha.");
 
-                var codigo = GetString(sheet, rowNum, cols["Codigo"]);
-                if (string.IsNullOrWhiteSpace(codigo))
-                { error = "Coluna 'Código' está vazia."; return false; }
-
-                var descricao = GetString(sheet, rowNum, cols["Descricao"]);
-
-                if (!TryGetInt(sheet, rowNum, cols["QtdInvoice"], out int qtd))
+                if (valor.Length > max)
                 {
-                    error = $"Coluna 'Qtd Invoice' inválida ('{GetRaw(sheet, rowNum, cols["QtdInvoice"])}').";
-                    return false;
+                    avisos.Add($"{nome} com mais de {max} caracteres foi cortado.");
+                    valor = valor[..max];
                 }
 
-                var lote = GetString(sheet, rowNum, cols["Lote"]);
-                if (string.IsNullOrWhiteSpace(lote))
-                { error = "Coluna 'Lote' está vazia."; return false; }
-
-                if (!TryGetDate(sheet, rowNum, cols["Validade"], out DateTime validade))
-                {
-                    error = $"Coluna 'Validade' inválida ('{GetRaw(sheet, rowNum, cols["Validade"])}').";
-                    return false;
-                }
-
-                // Opcional: vazio quando a planilha não tem a coluna de registro.
-                var registroAnvisa = cols.TryGetValue("RegistroAnvisa", out var regCol)
-                    ? GetString(sheet, rowNum, regCol)
-                    : string.Empty;
-
-                var lpn = GetString(sheet, rowNum, cols["Lpn"]);
-                if (string.IsNullOrWhiteSpace(lpn))
-                { error = "Coluna 'LPN' está vazia."; return false; }
-
-                var local = cols.TryGetValue("Local", out var localCol)
-                    ? NormalizarLocal(GetString(sheet, rowNum, localCol))
-                    : string.Empty;
-
-                record = new LabelRecord
-                {
-                    Invoice = invoice,
-                    Codigo = codigo,
-                    DescricaoAnvisa = descricao,
-                    QtdInvoice = qtd,
-                    Lote = lote,
-                    Validade = validade,
-                    RegistroAnvisa = registroAnvisa,
-                    Lpn = lpn,
-                    Local = local,
-                    LabelFilePath = null,
-                    ImportedAt = DateTime.UtcNow
-                };
-
-                return true;
+                return valor;
             }
-            catch (Exception ex)
+
+            var invoice = Texto("Invoice", "Invoice");
+            if (invoice.Length == 0)
+                invoice = SemInvoice;
+
+            var record = new LabelRecord
             {
-                error = $"Exceção inesperada: {ex.Message}";
-                return false;
+                Invoice = invoice,
+                Codigo = Texto("Codigo", "Código"),
+                DescricaoAnvisa = Texto("Descricao", "Descrição", MaxDescricao, obrigatorio: false),
+                Lote = Texto("Lote", "Lote"),
+                RegistroAnvisa = Texto("RegistroAnvisa", "Registro ANVISA", obrigatorio: false),
+                Lpn = Texto("Lpn", "LPN"),
+                Local = NormalizarLocal(Texto("Local", "Local", obrigatorio: false)),
+                LabelFilePath = null,
+                ImportedAt = DateTime.UtcNow
+            };
+
+            if (TryGetInt(sheet, rowNum, cols["QtdInvoice"], out int qtd) && qtd > 0)
+            {
+                record.QtdInvoice = qtd;
             }
+            else
+            {
+                var raw = SafeRaw(sheet, rowNum, cols["QtdInvoice"]);
+                avisos.Add(raw.Length == 0
+                    ? "Qtd Invoice vazia na planilha."
+                    : $"Qtd Invoice inválida na planilha ('{raw}').");
+            }
+
+            if (TryGetDate(sheet, rowNum, cols["Validade"], out var validade))
+            {
+                record.Validade = validade;
+            }
+            else
+            {
+                var raw = SafeRaw(sheet, rowNum, cols["Validade"]);
+                if (raw.Length == 0)
+                {
+                    avisos.Add("Validade vazia na planilha.");
+                }
+                else
+                {
+                    record.ValidadeTexto = raw.Length > MaxTexto ? raw[..MaxTexto] : raw;
+                    avisos.Add($"Validade inválida na planilha ('{raw}'): não é uma data que existe.");
+                }
+            }
+
+            if (avisos.Count > 0)
+            {
+                var texto = string.Join("\n", avisos);
+                record.Avisos = texto.Length > MaxAvisos ? texto[..MaxAvisos] : texto;
+            }
+
+            return record;
         }
 
         // ── Helpers de célula ─────────────────────────────────────────────────
@@ -324,43 +332,82 @@ namespace Busca_BT.Services
         private static string GetString(IXLWorksheet sheet, int row, int col)
         {
             var raw = sheet.Cell(row, col).GetValue<string>() ?? string.Empty;
+            // Remove caracteres invisíveis (zero-width space, BOM…) que vêm de copiar/colar
+            // e fazem um código "igual" não bater com o template.
+            raw = InvisibleChars().Replace(raw, string.Empty);
             return Regex.Replace(raw, @"\s+", " ").Trim();
         }
 
-        private static string GetRaw(IXLWorksheet sheet, int row, int col)
-            => sheet.Cell(row, col).Value.ToString() ?? string.Empty;
+        [GeneratedRegex(@"\p{Cf}")]
+        private static partial Regex InvisibleChars();
+
+        private static string SafeRaw(IXLWorksheet sheet, int row, int col)
+        {
+            try { return (sheet.Cell(row, col).Value.ToString() ?? string.Empty).Trim(); }
+            catch { return string.Empty; }
+        }
 
         private static bool TryGetInt(IXLWorksheet sheet, int row, int col, out int value)
         {
-            var cell = sheet.Cell(row, col);
-            if (cell.Value.IsNumber) { value = (int)cell.GetValue<double>(); return true; }
-            return int.TryParse(cell.GetValue<string>()?.Trim(), out value);
+            value = 0;
+            try
+            {
+                var cell = sheet.Cell(row, col);
+                if (cell.Value.IsNumber)
+                {
+                    var d = cell.GetValue<double>();
+                    if (d != Math.Floor(d) || d > int.MaxValue) return false;
+                    value = (int)d;
+                    return true;
+                }
+                // Aceita "1.200" / "1 200" (separador de milhar) além de "1200".
+                var texto = Regex.Replace(cell.GetValue<string>() ?? string.Empty, @"[\s.]", "");
+                return int.TryParse(texto, out value);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool TryGetDate(IXLWorksheet sheet, int row, int col, out DateTime value)
         {
-            var cell = sheet.Cell(row, col);
-
-            if (cell.Value.IsDateTime) { value = cell.GetValue<DateTime>(); return true; }
-
-            if (cell.Value.IsNumber)
-            {
-                try { value = DateTime.FromOADate(cell.GetValue<double>()); return true; }
-                catch { /* continua para parse de string */ }
-            }
-
-            var raw = cell.GetValue<string>()?.Trim();
-            if (!string.IsNullOrEmpty(raw))
-            {
-                string[] formats = ["dd/MM/yyyy", "d/M/yyyy", "dd/MM/yy", "yyyy-MM-dd", "MM/dd/yyyy"];
-                if (DateTime.TryParseExact(raw, formats,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.None, out value))
-                    return true;
-            }
-
             value = default;
-            return false;
+            try
+            {
+                var cell = sheet.Cell(row, col);
+
+                if (cell.Value.IsDateTime)
+                    value = cell.GetValue<DateTime>();
+                else if (cell.Value.IsNumber)
+                    value = DateTime.FromOADate(cell.GetValue<double>());
+                else if (!TryParseDateText(cell.GetValue<string>(), out value))
+                    return false;
+            }
+            catch
+            {
+                return false;
+            }
+
+            // Ano absurdo (ex.: "31/07/0228") é erro de digitação, não uma validade.
+            return value.Year is >= 2000 and <= 2100;
+        }
+
+        private static bool TryParseDateText(string? text, out DateTime value)
+        {
+            value = default;
+            var raw = text?.Trim();
+            if (string.IsNullOrEmpty(raw))
+                return false;
+
+            // Ignora hora no fim ("31/07/2028 00:00:00") e aceita "-" ou "." como separador.
+            raw = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0].Replace('-', '/').Replace('.', '/');
+
+            // Dia/mês (padrão brasileiro) primeiro; depois ISO e, por último, mês/dia americano.
+            string[] formats = ["d/M/yyyy", "d/M/yy", "yyyy/M/d", "M/d/yyyy"];
+            return DateTime.TryParseExact(raw, formats,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out value);
         }
 
         // ── LoggerMessage source generators (CA1848) ─────────────────────────
@@ -371,8 +418,8 @@ namespace Busca_BT.Services
         [LoggerMessage(Level = LogLevel.Information, Message = "Cabeçalhos resolvidos. Filtro 'Precisa de Etiqueta' ativo: {FiltroAtivo}")]
         private static partial void LogHeaderResolved(ILogger logger, bool filtroAtivo);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Linha ignorada {Row}: {Error}")]
-        private static partial void LogRowSkipped(ILogger logger, int row, string error);
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Linha {Row} importada com aviso: {Avisos}")]
+        private static partial void LogRowWithWarnings(ILogger logger, int row, string avisos);
 
         [LoggerMessage(Level = LogLevel.Information,
             Message = "Importação concluída. Total={Total} | Importadas={Imported} | Ignoradas={Skipped}")]

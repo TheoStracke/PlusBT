@@ -9,6 +9,9 @@ public sealed record ImportedInvoiceGroup(string Invoice, int Quantidade, int Et
     public string QuantidadeTexto => $"{Contagem.Itens(Quantidade)}  ·  {Contagem.Etiquetas(Etiquetas)}";
 }
 
+/// <summary>Item da fila com pendência, exibido no modal de resumo.</summary>
+public sealed record PendenciaResumo(string Titulo, string Motivo);
+
 /// <summary>Dados do modal exibido ao final de uma importação de planilha.</summary>
 public sealed class ImportSummary
 {
@@ -18,6 +21,13 @@ public sealed class ImportSummary
 
     public IReadOnlyList<ImportedInvoiceGroup> Importados { get; init; } = [];
     public IReadOnlyList<SkippedRow> NaoImportados { get; init; } = [];
+
+    /// <summary>Itens que entraram na fila, mas com pendência (sem template, data inválida…).</summary>
+    public IReadOnlyList<PendenciaResumo> ComPendencia { get; init; } = [];
+    public bool HasPendencias => ComPendencia.Count > 0;
+    public string PendenciasTexto => ComPendencia.Count == 1
+        ? "1 item com pendência — entrou na fila, mas precisa de atenção"
+        : $"{ComPendencia.Count} itens com pendência — entraram na fila, mas precisam de atenção";
 
     public int TotalImportados => Importados.Sum(g => g.Quantidade);
 
@@ -53,8 +63,12 @@ public sealed class ImportSummary
 
     public static ImportSummary From(
         string filePath, ImportResult result,
-        string? relatorioPasta = null, int relatorioQuantidade = 0, string? relatorioErro = null) => new()
+        string? relatorioPasta = null, int relatorioQuantidade = 0, string? relatorioErro = null,
+        IReadOnlyList<LabelRecord>? comPendencia = null) => new()
     {
+        ComPendencia = (comPendencia ?? [])
+            .Select(l => new PendenciaResumo($"Invoice {l.Invoice}  ·  Item {l.Item}  ·  {l.Codigo}", l.PendenciasTexto))
+            .ToList(),
         Success = result.Success,
         RelatorioPasta = relatorioPasta,
         RelatorioQuantidade = relatorioQuantidade,

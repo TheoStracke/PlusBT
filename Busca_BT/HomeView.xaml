@@ -36,6 +36,17 @@
                             PlaceholderText="Buscar por invoice, código, lote, LPN ou descrição..."
                             Icon="{ui:SymbolIcon Search24}"
                             Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"/>
+                <!-- Pendências da fila: clicar filtra só os itens com problema -->
+                <ToggleButton DockPanel.Dock="Left" Margin="12,0,0,0" Padding="12,6" VerticalAlignment="Center"
+                              IsChecked="{Binding SomentePendencias}"
+                              ToolTip="Mostrar só os itens com pendência (sem template, data inválida, campo vazio…)"
+                              Visibility="{Binding HasPendencias, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Symbol="Warning20" Filled="True" FontSize="16" Margin="0,0,6,0"
+                                       Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                        <TextBlock Text="{Binding PendenciasTexto}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </ToggleButton>
                 <TextBlock DockPanel.Dock="Right" Text="{Binding ResumoFila}"
                            FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
                            Visibility="{Binding HasFila, Converter={StaticResource BoolToVisibilityConverter}}"/>
@@ -95,7 +106,16 @@
                                                     <Run Text="Invoice " Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                                     <Run Text="{Binding Invoice, Mode=OneWay}" FontWeight="SemiBold"/>
                                                 </TextBlock>
-                                                <TextBlock Text="{Binding ResumoTexto}" FontSize="12" Opacity="0.65" Margin="0,2,0,0"/>
+                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                    <TextBlock Text="{Binding ResumoTexto}" FontSize="12" Opacity="0.65"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="12,0,0,0"
+                                                                Visibility="{Binding HasPendencias, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <ui:SymbolIcon Symbol="Warning16" Filled="True" FontSize="13" Margin="0,0,4,0"
+                                                                       Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                                                        <TextBlock Text="{Binding PendenciasTexto}" FontSize="12" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                                                    </StackPanel>
+                                                </StackPanel>
                                             </StackPanel>
 
                                             <!-- Progresso: rótulos já abertos / total -->
@@ -163,6 +183,10 @@
                                                             </Style>
                                                         </Border.Style>
                                                         <Grid>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto"/>
+                                                                <RowDefinition Height="Auto"/>
+                                                            </Grid.RowDefinitions>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="56"/>
                                                                 <ColumnDefinition Width="120"/>
@@ -186,6 +210,11 @@
                                                                         <Setter Property="Content" Value="Abrir"/>
                                                                         <Setter Property="Appearance" Value="Secondary"/>
                                                                         <Style.Triggers>
+                                                                            <!-- Sem template: o clique explica o motivo em vez de abrir -->
+                                                                            <DataTrigger Binding="{Binding HasFile}" Value="False">
+                                                                                <Setter Property="Content" Value="Ver motivo"/>
+                                                                                <Setter Property="Appearance" Value="Caution"/>
+                                                                            </DataTrigger>
                                                                             <DataTrigger Binding="{Binding FoiAberta}" Value="True">
                                                                                 <Setter Property="Content" Value="Aberto"/>
                                                                                 <Setter Property="Appearance" Value="Success"/>
@@ -194,6 +223,16 @@
                                                                     </Style>
                                                                 </ui:Button.Style>
                                                             </ui:Button>
+
+                                                            <!-- Pendências do item (sem template, data inválida…) -->
+                                                            <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="5" Margin="0,4,0,2"
+                                                                       Visibility="{Binding TemPendencia, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                                <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Warning16" Filled="True" FontSize="14"
+                                                                               VerticalAlignment="Top" Margin="0,1,6,0"
+                                                                               Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                                                                <TextBlock Text="{Binding PendenciasTexto}" FontSize="12" TextWrapping="Wrap"
+                                                                           Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                                                            </DockPanel>
                                                         </Grid>
                                                     </Border>
                                                 </DataTemplate>
@@ -437,6 +476,32 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Importados com pendência (amarelo): entraram na fila, mas precisam de atenção -->
+                            <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,12"
+                                    Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                                    Visibility="{Binding HasPendencias, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <ui:SymbolIcon Symbol="Warning24" Filled="True" FontSize="22"
+                                                       Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="{Binding PendenciasTexto}" FontSize="14" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding ComPendencia}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="32,3,0,5">
+                                                    <TextBlock Text="{Binding Titulo}" FontSize="13" FontWeight="SemiBold"/>
+                                                    <TextBlock Text="{Binding Motivo}" FontSize="12" Opacity="0.75"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
                             <!-- Não importados (vermelho) -->
                             <Border CornerRadius="8" Padding="16,14"
                                     Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
@@ -498,6 +563,58 @@
                         </StackPanel>
                     </DockPanel>
                 </Grid>
+            </Border>
+
+            <!-- 5. Ciência de pendências: o rótulo só abre depois de marcar todas as caixas -->
+            <Border Width="520" CornerRadius="12" Padding="28,24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="{DynamicResource ApplicationBackgroundBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
+                    Visibility="{Binding IsCienciaOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,16">
+                        <Grid DockPanel.Dock="Left" Width="44" Height="44" Margin="0,0,14,0" VerticalAlignment="Center">
+                            <Ellipse Fill="{DynamicResource SystemFillColorCautionBackgroundBrush}"/>
+                            <ui:SymbolIcon Symbol="Warning24" Filled="True" FontSize="22"
+                                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Este item tem pendências" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock FontSize="12" Opacity="0.65" Margin="0,2,0,0">
+                                <Run Text="Invoice "/><Run Text="{Binding CienciaLabel.Invoice, Mode=OneWay}"/>
+                                <Run Text="  ·  Item "/><Run Text="{Binding CienciaLabel.Item, Mode=OneWay}"/>
+                                <Run Text="  ·  "/><Run Text="{Binding CienciaLabel.Codigo, Mode=OneWay}" FontWeight="SemiBold"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <TextBlock Text="Confira cada aviso e marque que está ciente para abrir a etiqueta mesmo assim."
+                               FontSize="13" TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,12"/>
+
+                    <Border CornerRadius="8" Padding="14,10"
+                            Background="{DynamicResource SystemFillColorCautionBackgroundBrush}">
+                        <ItemsControl ItemsSource="{Binding CienciaItens}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding Ciente}" Margin="0,4">
+                                        <TextBlock FontSize="13" TextWrapping="Wrap">
+                                            <Run Text="Estou ciente: " FontWeight="SemiBold"/><Run Text="{Binding Texto, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                        <ui:Button Content="Cancelar" Appearance="Secondary" MinWidth="100" Margin="0,0,8,0"
+                                   Command="{Binding CancelCienciaCommand}"/>
+                        <ui:Button Content="Abrir mesmo assim" Appearance="Caution" MinWidth="150"
+                                   Icon="{ui:SymbolIcon Open20}"
+                                   Command="{Binding ConfirmCienciaCommand}"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
 
             <!-- 4. Confirmação de "Limpar fila" -->

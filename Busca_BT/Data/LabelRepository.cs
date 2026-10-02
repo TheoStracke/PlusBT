@@ -228,10 +228,10 @@ namespace Busca_BT.Data
             const string sqlInsert = """
                 INSERT INTO dbo.Labels
                     (Item, Invoice, Codigo, DescricaoAnvisa, QtdInvoice,
-                     Lote, Validade, RegistroAnvisa, Lpn, LabelFilePath, ImportedAt, BatchId)
+                     Lote, Validade, ValidadeTexto, RegistroAnvisa, Lpn, LabelFilePath, ImportedAt, BatchId, Avisos)
                 VALUES
                     (@Item, @Invoice, @Codigo, @DescricaoAnvisa, @QtdInvoice,
-                     @Lote, @Validade, @RegistroAnvisa, @Lpn, @LabelFilePath, @ImportedAt, @BatchId);
+                     @Lote, @Validade, @ValidadeTexto, @RegistroAnvisa, @Lpn, @LabelFilePath, @ImportedAt, @BatchId, @Avisos);
                 """;
 
             try
@@ -254,11 +254,13 @@ namespace Busca_BT.Data
                         r.QtdInvoice,
                         r.Lote,
                         r.Validade,
+                        r.ValidadeTexto,
                         r.RegistroAnvisa,
                         r.Lpn,
                         r.LabelFilePath, // Estará NULL (vem do ExcelImportService)
                         r.ImportedAt,
-                        BatchId = batchId
+                        BatchId = batchId,
+                        r.Avisos
                     }, tx);
                     inserted++;
                 }
@@ -308,13 +310,13 @@ namespace Busca_BT.Data
 
         // ── SQL base ─────────────────────────────────────────────────────────
 
-        // A MÁGICA ACONTECE AQUI: Cruzamento da fila (Labels) com os arquivos do acervo (Templates)
+        // O vínculo com o template (dbo.Templates) não é feito aqui com JOIN exato: é feito
+        // em LabelDiagnostics, que tolera espaços, maiúsculas, zeros à esquerda e sufixos.
         private const string BaseSelectSql = """
             SELECT L.Id, L.Item, L.BatchId, L.Invoice, L.Codigo, L.DescricaoAnvisa, L.QtdInvoice,
-                   L.Lote, L.Validade, L.RegistroAnvisa, L.Lpn,
-                   T.LabelFilePath, L.ImportedAt, L.UpdatedAt, L.AbertaEm
+                   L.Lote, L.Validade, L.ValidadeTexto, L.RegistroAnvisa, L.Lpn,
+                   L.ImportedAt, L.UpdatedAt, L.AbertaEm, L.Avisos
             FROM   dbo.Labels L
-            LEFT JOIN dbo.Templates T ON L.Codigo = T.Codigo
             """;
 
         // ── LoggerMessage source generators (CA1848) ─────────────────────────

@@ -25,7 +25,7 @@ namespace Busca_BT.ViewModels
                 label.PropertyChanged += OnLabelChanged;
 
             ToggleCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
-            ApplyFilter(string.Empty);
+            ApplyFilter(string.Empty, somentePendencias: false);
         }
 
         public string Invoice { get; }
@@ -42,6 +42,11 @@ namespace Busca_BT.ViewModels
         public bool Concluida => Total > 0 && Abertas == Total;
 
         public string ProgressoTexto => $"{Abertas}/{Total}";
+
+        /// <summary>Rótulos desta invoice com alguma pendência (sem template, data inválida…).</summary>
+        public int Pendencias => _all.Count(l => l.TemPendencia);
+        public bool HasPendencias => Pendencias > 0;
+        public string PendenciasTexto => Pendencias == 1 ? "1 com pendência" : $"{Pendencias} com pendência";
         public string ResumoTexto => $"{Contagem.Itens(Total)}  ·  {Contagem.Etiquetas(TotalEtiquetas)}";
 
         private bool _isExpanded;
@@ -57,7 +62,7 @@ namespace Busca_BT.ViewModels
         /// Filtra os rótulos exibidos. Retorna false quando nenhum rótulo bate com o
         /// termo (a Home esconde a invoice). O progresso e as folhas não mudam com a busca.
         /// </summary>
-        public bool ApplyFilter(string termo)
+        public bool ApplyFilter(string termo, bool somentePendencias)
         {
             var semTermo = string.IsNullOrEmpty(termo);
             var invoiceBate = !semTermo && Invoice.Contains(termo, StringComparison.OrdinalIgnoreCase);
@@ -72,7 +77,10 @@ namespace Busca_BT.ViewModels
 
             Items.Clear();
             foreach (var l in visiveis)
-                Items.Add(l);
+            {
+                if (!somentePendencias || l.TemPendencia)
+                    Items.Add(l);
+            }
 
             return Items.Count > 0;
         }
