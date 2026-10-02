@@ -13,12 +13,36 @@ namespace Busca_BT.ViewModels;
 /// Tela "Quem está operando?": cartões com os operadores ativos; quem tem PIN
 /// digita o PIN antes de entrar.
 /// </summary>
-public sealed partial class OperadorSelecaoViewModel(
-    IOperadorRepository repo,
-    ISessaoOperador sessao,
-    IEventoService eventos,
-    ILogger<OperadorSelecaoViewModel> logger) : ObservableObject
+public sealed partial class OperadorSelecaoViewModel : ObservableObject
 {
+    private readonly IOperadorRepository repo;
+    private readonly ISessaoOperador sessao;
+    private readonly IEventoService eventos;
+    private readonly ISyncService sync;
+    private readonly ILogger<OperadorSelecaoViewModel> logger;
+
+    public OperadorSelecaoViewModel(
+        IOperadorRepository repo,
+        ISessaoOperador sessao,
+        IEventoService eventos,
+        ISyncService sync,
+        ILogger<OperadorSelecaoViewModel> logger)
+    {
+        this.repo = repo;
+        this.sessao = sessao;
+        this.eventos = eventos;
+        this.sync = sync;
+        this.logger = logger;
+
+        // Operador novo/alterado chegou pela sincronização: atualiza os cartões
+        // (só enquanto a tela está esperando alguém escolher).
+        sync.DadosAtualizados += () => System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
+        {
+            if (sessao.Atual is null && !PedindoPin && !Carregando)
+                await CarregarAsync();
+        });
+    }
+
     public ObservableCollection<Operador> Operadores { get; } = [];
 
     /// <summary>Operador escolhido que ainda precisa digitar o PIN.</summary>
@@ -56,12 +80,18 @@ public sealed partial class OperadorSelecaoViewModel(
         try
         {
             var lista = await repo.ListarAsync(somenteAtivos: true);
+
+            // Cópia local vazia (primeiro uso neste PC): tenta baixar do Supabase antes.
+            if (lista.Count == 0 && await sync.SincronizarAgoraAsync())
+                lista = await repo.ListarAsync(somenteAtivos: true);
+
             Operadores.Clear();
             foreach (var op in lista)
                 Operadores.Add(op);
 
             if (Operadores.Count == 0)
-                ErroCarregar = "Nenhum operador ativo cadastrado.";
+                ErroCarregar = "Nenhum operador disponível neste computador. Confira a internet e clique em " +
+                               "\"Tentar de novo\" (na primeira vez o computador precisa estar online).";
         }
         catch (Exception ex)
         {

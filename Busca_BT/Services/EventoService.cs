@@ -1,6 +1,5 @@
 using Busca_BT.Data;
 using Busca_BT.Infrastructure;
-using Dapper;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -23,41 +22,36 @@ public static class Acoes
 public interface IEventoService
 {
     /// <summary>
-    /// Registra quem fez o quê (operador da sessão + este PC). Nunca lança: uma falha
-    /// no registro não pode impedir o trabalho do operador; ela só vai para o log.
+    /// Registra quem fez o quê (operador da sessão + este PC). O evento entra na fila de
+    /// envio local e sobe para o Supabase quando houver conexão (funciona offline).
+    /// Nunca lança: uma falha no registro não pode impedir o trabalho do operador.
     /// </summary>
     Task RegistrarAsync(string acao, string? invoice = null, string? codigo = null, object? detalhes = null);
 }
 
 public sealed partial class EventoService(
-    IDbConnectionFactory factory,
+    LocalCache cache,
+    ISyncService sync,
     ISessaoOperador sessao,
     ILogger<EventoService> logger) : IEventoService
 {
-    public async Task RegistrarAsync(string acao, string? invoice = null, string? codigo = null, object? detalhes = null)
+    public Task RegistrarAsync(string acao, string? invoice = null, string? codigo = null, object? detalhes = null)
     {
         try
         {
-            await using var conn = await factory.OpenAsync();
-            await conn.ExecuteAsync("""
-                insert into plusbt.eventos (id, operador_id, pc, acao, invoice, codigo, detalhes)
-                values (@Id, @OperadorId, @Pc, @Acao, @Invoice, @Codigo, cast(@Detalhes as jsonb));
-                """,
-                new
-                {
-                    Id = Guid.NewGuid(),
-                    OperadorId = sessao.Atual?.Id,
-                    sessao.Pc,
-                    Acao = acao,
-                    Invoice = invoice,
-                    Codigo = codigo,
-                    Detalhes = detalhes is null ? null : JsonSerializer.Serialize(detalhes)
-                });
+            var evento = new EventoPendente(
+                Guid.NewGuid(), DateTime.UtcNow, sessao.Atual?.Id, sessao.Pc, acao, invoice, codigo,
+                detalhes is null ? null : JsonSerializer.Serialize(detalhes));
+
+            cache.Enfileirar(TiposPendentes.Evento, JsonSerializer.Serialize(evento));
+            sync.NotificarPendencia();
         }
         catch (Exception ex)
         {
             LogFalha(logger, acao, ex);
         }
+
+        return Task.CompletedTask;
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Falha ao registrar o evento '{Acao}'")]

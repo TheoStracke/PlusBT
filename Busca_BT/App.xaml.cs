@@ -1,4 +1,5 @@
 ﻿using Busca_BT.Infrastructure;
+using Busca_BT.Services;
 using Busca_BT.ViewModels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
@@ -94,6 +95,20 @@ namespace Busca_BT
             splash.SetStatus("Conectando ao banco de dados…");
             var dbReady = await Task.Run(TryInitializeDatabaseAsync);
 
+            // Cópia local: baixa a versão atual (se houver internet) e liga a sincronização
+            // automática. Sem internet, o app segue com a cópia da última sincronização.
+            var sync = ServiceProvider.GetRequiredService<ISyncService>();
+            var temCopiaLocal = ServiceProvider.GetRequiredService<Data.LocalCache>().TemOperadores();
+            if (dbReady)
+            {
+                sync.MarcarBancoInicializado();
+                splash.SetStatus("Sincronizando…");
+                using var limite = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                await Task.Run(() => sync.SincronizarAgoraAsync(limite.Token));
+                temCopiaLocal = ServiceProvider.GetRequiredService<Data.LocalCache>().TemOperadores();
+            }
+            sync.Iniciar();
+
             splash.SetStatus("Carregando invoices…");
 
             // Configure navigation maps
@@ -120,7 +135,9 @@ namespace Busca_BT
             await rendered.Task;
             await splash.CloseWithFadeAsync();
 
-            if (!dbReady)
+            // Sem banco E sem cópia local (primeiro uso neste PC): precisa configurar a conexão.
+            // Sem banco mas com cópia local: segue offline, sem incomodar o operador.
+            if (!dbReady && !temCopiaLocal)
             {
                 nav.NavigateTo<SettingsViewModel>();
                 MessageBox.Show(

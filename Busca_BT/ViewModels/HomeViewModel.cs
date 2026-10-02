@@ -22,6 +22,7 @@ namespace Busca_BT.ViewModels
         private readonly IDialogService _dialog;
         private readonly ISessaoOperador _sessao;
         private readonly IEventoService _eventos;
+        private readonly ISyncService _sync;
         private readonly ILogger<HomeViewModel>? _logger;
 
         /// <summary>Importar planilha e limpar a fila: só administrador.</summary>
@@ -164,6 +165,7 @@ namespace Busca_BT.ViewModels
             IDialogService dialog,
             ISessaoOperador sessao,
             IEventoService eventos,
+            ISyncService sync,
             ILogger<HomeViewModel>? logger = null)
         {
             _excelImportService = excelImportService;
@@ -172,6 +174,7 @@ namespace Busca_BT.ViewModels
             _dialog = dialog;
             _sessao = sessao;
             _eventos = eventos;
+            _sync = sync;
             _logger = logger;
 
             LoadCommand = new RelayCommand(async () => await LoadAsync());
@@ -230,6 +233,22 @@ namespace Busca_BT.ViewModels
                 _logger?.LogWarning(ex, "Falha ao abrir a pasta de relatórios {Pasta}", pasta);
                 _dialog.ShowWarning("Relatórios", $"Não foi possível abrir a pasta:\n{pasta}");
             }
+        }
+
+        /// <summary>Tela visível: passa a recarregar sozinha quando chegam dados novos.</summary>
+        public void Ativar() => _sync.DadosAtualizados += OnDadosAtualizados;
+
+        /// <summary>Tela saiu de cena: para de ouvir a sincronização (a tela é recriada a cada navegação).</summary>
+        public void Desativar() => _sync.DadosAtualizados -= OnDadosAtualizados;
+
+        private void OnDadosAtualizados()
+        {
+            // Vem da thread da sincronização. Não recarrega no meio de uma importação/modal.
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
+            {
+                if (!IsOverlayVisible)
+                    await LoadAsync();
+            });
         }
 
         public async Task LoadAsync()

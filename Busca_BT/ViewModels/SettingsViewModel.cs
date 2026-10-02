@@ -19,6 +19,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IConnectionSettingsStore _store;
     private readonly DatabaseOptions _dbOptions;
     private readonly DatabaseInitializer _initializer;
+    private readonly Services.ISyncService _sync;
     private readonly ILogger<SettingsViewModel> _logger;
 
     [ObservableProperty]
@@ -46,11 +47,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         IConnectionSettingsStore store,
         DatabaseOptions dbOptions,
         DatabaseInitializer initializer,
+        Services.ISyncService sync,
         ILogger<SettingsViewModel> logger)
     {
         _store = store;
         _dbOptions = dbOptions;
         _initializer = initializer;
+        _sync = sync;
         _logger = logger;
 
         var current = _store.Load();
@@ -114,7 +117,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             _dbOptions.ConnectionString = settings.IsComplete ? settings.BuildConnectionString() : string.Empty;
 
             await _initializer.InitializeAsync();
-            StatusText = "Configuração salva. Conexão validada com sucesso.";
+            _sync.MarcarBancoInicializado();
+            await _sync.SincronizarAgoraAsync();
+            StatusText = "Configuração salva. Conexão validada e dados sincronizados.";
         }
         catch (Exception ex)
         {

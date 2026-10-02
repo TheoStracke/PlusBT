@@ -99,7 +99,17 @@ namespace Busca_BT.ViewModels
 
         public async Task LoadAllAsync()
         {
-            var batches = (await _repository.GetBatchesAsync()).ToArray();
+            ImportBatchRecord[] batches;
+            try
+            {
+                batches = (await _repository.GetBatchesAsync()).ToArray();
+            }
+            catch (SemConexaoException ex)
+            {
+                _dialog.ShowWarning("Histórico", ex.Message);
+                return;
+            }
+
             _all = batches;
             TotalRecords = _all.Length;
             Page = 1;

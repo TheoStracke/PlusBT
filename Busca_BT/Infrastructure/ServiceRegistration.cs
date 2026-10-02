@@ -24,10 +24,16 @@ namespace Busca_BT.Infrastructure
             services.AddSingleton<DatabaseInitializer>();
 
             services.AddSingleton<ISessaoOperador, SessaoOperador>();
-            services.AddSingleton<IOperadorRepository, OperadorRepository>();
-            services.AddSingleton<IEventoService, EventoService>();
 
-            services.AddSingleton<ILabelRepository, LabelRepository>();
+            // Supabase (acesso direto) + cópia local; as telas usam as versões "Offline",
+            // que leem da cópia local e só exigem internet nas ações de administrador.
+            services.AddSingleton<LabelRepository>();
+            services.AddSingleton<OperadorRepository>();
+            services.AddSingleton<LocalCache>();
+            services.AddSingleton<ISyncService, SyncService>();
+            services.AddSingleton<ILabelRepository, OfflineLabelRepository>();
+            services.AddSingleton<IOperadorRepository, OfflineOperadorRepository>();
+            services.AddSingleton<IEventoService, EventoService>();
             services.AddSingleton<IExcelImportService, ExcelImportService>();
             services.AddSingleton<IInvoiceReportService, InvoiceReportService>();
 

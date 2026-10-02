@@ -9,6 +9,11 @@ public partial class HomeView : UserControl
     {
         InitializeComponent();
         DataContext = viewModel;
-        Loaded += async (_, _) => await viewModel.LoadAsync();
+        Loaded += async (_, _) =>
+        {
+            viewModel.Ativar();
+            await viewModel.LoadAsync();
+        };
+        Unloaded += (_, _) => viewModel.Desativar();
     }
 }
