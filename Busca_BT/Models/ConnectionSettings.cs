@@ -1,72 +1,42 @@
-using Microsoft.Data.SqlClient;
+using Npgsql;
 
 namespace Busca_BT.Models;
 
 /// <summary>
-/// Configuração de conexão com o SQL Server editável pelo usuário na tela de
-/// Configurações, persistida por máquina (não faz parte do build/instalador).
+/// Conexão com o Postgres do Supabase, editável na tela de Configurações e
+/// salva por máquina (a senha vai criptografada, ver ConnectionSettingsStore).
 /// </summary>
 public sealed class ConnectionSettings
 {
-    public string Server { get; set; } = string.Empty;
-    public string Instance { get; set; } = string.Empty;
-    public string Database { get; set; } = string.Empty;
+    public const string DefaultHost = "aws-0-sa-east-1.pooler.supabase.com";
 
-    /// <summary>Quando true, usa a identidade do Windows do usuário logado (sem usuário/senha do SQL).</summary>
-    public bool UseWindowsAuth { get; set; } = true;
+    public string Host { get; set; } = DefaultHost;
+    public int Port { get; set; } = 5432;
+    public string Database { get; set; } = "postgres";
 
-    public string UserId { get; set; } = string.Empty;
+    /// <summary>No Session pooler do Supabase o usuário é "postgres.&lt;id-do-projeto&gt;".</summary>
+    public string Username { get; set; } = string.Empty;
+
     public string Password { get; set; } = string.Empty;
-    public bool TrustServerCertificate { get; set; } = true;
-    public int ConnectTimeoutSeconds { get; set; } = 10;
-    public bool AutoDiscover { get; set; } = true;
+    public int ConnectTimeoutSeconds { get; set; } = 15;
 
-    public string BuildConnectionString()
+    public bool IsComplete =>
+        !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(Username) && !string.IsNullOrEmpty(Password);
+
+    public string BuildConnectionString() => new NpgsqlConnectionStringBuilder
     {
-        var dataSource = string.IsNullOrWhiteSpace(Instance) ? Server : $@"{Server}\{Instance}";
-
-        var builder = new SqlConnectionStringBuilder
-        {
-            DataSource = dataSource,
-            InitialCatalog = Database,
-            TrustServerCertificate = TrustServerCertificate,
-            ConnectTimeout = ConnectTimeoutSeconds
-        };
-
-        if (UseWindowsAuth)
-        {
-            builder.IntegratedSecurity = true;
-        }
-        else
-        {
-            builder.UserID = UserId;
-            builder.Password = Password;
-        }
-
-        return builder.ConnectionString;
-    }
-
-    public static ConnectionSettings FromConnectionString(string connectionString)
-    {
-        if (string.IsNullOrWhiteSpace(connectionString))
-            return new ConnectionSettings();
-
-        var builder = new SqlConnectionStringBuilder(connectionString);
-        var dataSource = builder.DataSource ?? string.Empty;
-        var idx = dataSource.IndexOf('\\');
-        var server = idx >= 0 ? dataSource[..idx] : dataSource;
-        var instance = idx >= 0 ? dataSource[(idx + 1)..] : string.Empty;
-
-        return new ConnectionSettings
-        {
-            Server = server,
-            Instance = instance,
-            Database = builder.InitialCatalog,
-            UseWindowsAuth = builder.IntegratedSecurity,
-            UserId = builder.UserID,
-            Password = builder.Password,
-            TrustServerCertificate = builder.TrustServerCertificate,
-            ConnectTimeoutSeconds = builder.ConnectTimeout
-        };
-    }
+        Host = Host,
+        Port = Port,
+        Database = Database,
+        Username = Username,
+        Password = Password,
+        SslMode = SslMode.Require,
+        Timeout = ConnectTimeoutSeconds,
+        CommandTimeout = 60,
+        SearchPath = "plusbt,public",
+        // Internet instável: conexões ociosas são descartadas logo e recriadas sob demanda.
+        ConnectionIdleLifetime = 60,
+        KeepAlive = 30,
+        ApplicationName = "PlusBT"
+    }.ConnectionString;
 }

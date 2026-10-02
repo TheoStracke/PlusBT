@@ -15,51 +15,33 @@
 
         <ui:Card Grid.Row="1" MaxWidth="520" HorizontalAlignment="Left" Padding="24" VerticalAlignment="Top">
             <StackPanel>
-                <TextBlock Text="Altere o servidor SQL usado por este computador. Não precisa recompilar o app — basta salvar."
+                <TextBlock Text="Banco de dados na nuvem (Supabase). Os dados ficam no painel do Supabase em Project Settings → Database → Session pooler. A senha é guardada criptografada neste computador."
                            FontSize="12" Opacity="0.65" TextWrapping="Wrap" Margin="0,0,0,20"/>
 
-                <TextBlock Text="Servidor (IP ou hostname)" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ui:TextBox Text="{Binding Server, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
+                <TextBlock Text="Servidor (host)" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ui:TextBox Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
 
-                <TextBlock Text="Instância (opcional, ex: SQLEXPRESS)" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ui:TextBox Text="{Binding Instance, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Porta" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <ui:TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Banco de dados" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <ui:TextBox Text="{Binding Database, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                </Grid>
 
-                <TextBlock Text="Banco de dados" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ui:TextBox Text="{Binding Database, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
-
-                <CheckBox Content="Usar autenticação do Windows (sem usuário/senha do SQL)"
-                          IsChecked="{Binding UseWindowsAuth}"
-                          FontSize="12" Margin="0,0,0,16"/>
-
-                <TextBlock Text="Usuário" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ui:TextBox Text="{Binding UserId, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16">
-                    <ui:TextBox.Style>
-                        <Style TargetType="{x:Type ui:TextBox}" BasedOn="{StaticResource {x:Type ui:TextBox}}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding UseWindowsAuth}" Value="True">
-                                    <Setter Property="IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ui:TextBox.Style>
-                </ui:TextBox>
+                <TextBlock Text="Usuário (ex.: postgres.id-do-projeto)" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ui:TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
 
                 <TextBlock Text="Senha" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                <ui:PasswordBox x:Name="PasswordBox" Margin="0,0,0,16">
-                    <ui:PasswordBox.Style>
-                        <Style TargetType="{x:Type ui:PasswordBox}" BasedOn="{StaticResource {x:Type ui:PasswordBox}}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding UseWindowsAuth}" Value="True">
-                                    <Setter Property="IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ui:PasswordBox.Style>
-                </ui:PasswordBox>
-
-                <CheckBox Content="Localizar servidor automaticamente na rede local se a conexão configurada falhar"
-                          IsChecked="{Binding AutoDiscover}"
-                          FontSize="12" Margin="0,0,0,20"/>
+                <ui:PasswordBox x:Name="PasswordBox" Margin="0,0,0,20"/>
 
                 <StackPanel Orientation="Horizontal">
                     <ui:Button Content="Testar conexão"
@@ -71,6 +53,8 @@
                                Icon="{ui:SymbolIcon Save24}"
                                Appearance="Primary"
                                Command="{Binding SalvarCommand}"/>
+                    <ui:ProgressRing IsIndeterminate="True" Width="20" Height="20" Margin="12,0,0,0"
+                                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </StackPanel>
 
                 <TextBlock Text="{Binding StatusText}"

@@ -1,302 +1,129 @@
 using Dapper;
-using Microsoft.Data.Sql;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using System.Data;
+using System.IO;
+using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace Busca_BT.Data;
 
 public sealed class DatabaseOptions
 {
-    public const string Section = "Database";
-
-    /// <summary>Connection string configurada pelo usuário (tela de Configurações) ou appsettings.json (fallback inicial).</summary>
+    /// <summary>Connection string do Postgres (Supabase), montada a partir das Configurações.</summary>
     public string ConnectionString { get; set; } = string.Empty;
-
-    /// <summary>Quando true, tenta localizar o servidor automaticamente na rede local se a conexão configurada falhar.</summary>
-    public bool AutoDiscover { get; set; } = true;
-
-    /// <summary>Connection string efetivamente usada nas conexões. Pode ser substituída pela descoberta automática.</summary>
-    public string ActiveConnectionString { get; set; } = string.Empty;
 }
 
 public interface IDbConnectionFactory
 {
-    Task<IDbConnection> OpenAsync(CancellationToken ct = default);
+    Task<NpgsqlConnection> OpenAsync(CancellationToken ct = default);
 }
 
-public sealed class SqlServerConnectionFactory(DatabaseOptions options) : IDbConnectionFactory
+public sealed class NpgsqlConnectionFactory(DatabaseOptions options) : IDbConnectionFactory
 {
-    public async Task<IDbConnection> OpenAsync(CancellationToken ct = default)
+    public async Task<NpgsqlConnection> OpenAsync(CancellationToken ct = default)
     {
-        var conn = new SqlConnection(options.ActiveConnectionString);
+        if (string.IsNullOrWhiteSpace(options.ConnectionString))
+            throw new InvalidOperationException("Conexão com o banco não configurada. Preencha a tela Configurações.");
+
+        var conn = new NpgsqlConnection(options.ConnectionString);
         await conn.OpenAsync(ct);
         return conn;
     }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Descoberta automática de servidor SQL na rede local
+// Inicialização: conecta e aplica as migrações pendentes
 // ────────────────────────────────────────────────────────────────────────────
 
-public interface ISqlServerDiscoveryService
+/// <summary>
+/// Aplica, na ordem, os scripts Data/Migrations/NNN_*.sql (embutidos no .exe) que
+/// ainda não constam em plusbt.schema_versao. Cada script roda numa transação: ou
+/// entra inteiro ou nada. Um lock impede dois PCs de migrarem ao mesmo tempo.
+/// </summary>
+public sealed partial class DatabaseInitializer(
+    IDbConnectionFactory factory,
+    ILogger<DatabaseInitializer> logger)
 {
-    /// <summary>
-    /// Varre a rede local (SQL Server Browser / UDP 1434) procurando um servidor
-    /// com a mesma instância da connection string modelo e testa a conexão em
-    /// cada candidato encontrado. Retorna a primeira connection string que
-    /// conseguir conectar, ou null se nenhuma funcionar.
-    /// </summary>
-    Task<string?> TryFindReachableServerAsync(string templateConnectionString, CancellationToken ct = default);
-}
-
-public sealed partial class SqlServerDiscoveryService(ILogger<SqlServerDiscoveryService> logger) : ISqlServerDiscoveryService
-{
-    public async Task<string?> TryFindReachableServerAsync(string templateConnectionString, CancellationToken ct = default)
-    {
-        var template = new SqlConnectionStringBuilder(templateConnectionString);
-        var originalDataSource = template.DataSource;
-        var instanceName = ExtractInstanceName(originalDataSource);
-
-        LogScanStarting(logger, instanceName);
-
-        DataTable sources;
-        try
-        {
-            sources = await Task.Run(() => SqlDataSourceEnumerator.Instance.GetDataSources(), ct);
-        }
-        catch (Exception ex)
-        {
-            LogScanFailed(logger, ex);
-            return null;
-        }
-
-        foreach (DataRow row in sources.Rows)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            if (row["ServerName"] is not string serverName || string.IsNullOrWhiteSpace(serverName))
-                continue;
-
-            var rowInstance = row["InstanceName"] as string ?? string.Empty;
-
-            if (!string.IsNullOrEmpty(instanceName) &&
-                !string.Equals(rowInstance, instanceName, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var candidateDataSource = string.IsNullOrEmpty(rowInstance)
-                ? serverName
-                : $"{serverName}\\{rowInstance}";
-
-            if (string.Equals(candidateDataSource, originalDataSource, StringComparison.OrdinalIgnoreCase))
-                continue; // já sabemos que este falhou (é o que está configurado)
-
-            var candidate = new SqlConnectionStringBuilder(templateConnectionString)
-            {
-                DataSource = candidateDataSource,
-                ConnectTimeout = 3
-            };
-
-            if (await CanConnectAsync(candidate.ConnectionString, ct))
-            {
-                LogServerFound(logger, candidateDataSource);
-                return candidate.ConnectionString;
-            }
-        }
-
-        LogNoServerFound(logger);
-        return null;
-    }
-
-    private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken ct)
-    {
-        try
-        {
-            await using var conn = new SqlConnection(connectionString);
-            await conn.OpenAsync(ct);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static string ExtractInstanceName(string dataSource)
-    {
-        var idx = dataSource.IndexOf('\\');
-        return idx >= 0 ? dataSource[(idx + 1)..] : string.Empty;
-    }
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Procurando servidores SQL na rede local (instância esperada: '{InstanceName}')...")]
-    private static partial void LogScanStarting(ILogger logger, string instanceName);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Falha ao varrer a rede local em busca de servidores SQL.")]
-    private static partial void LogScanFailed(ILogger logger, Exception ex);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Servidor SQL encontrado na rede local: {DataSource}")]
-    private static partial void LogServerFound(ILogger logger, string dataSource);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Nenhum servidor SQL compatível foi encontrado na rede local.")]
-    private static partial void LogNoServerFound(ILogger logger);
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Inicialização / validação do banco
-// ────────────────────────────────────────────────────────────────────────────
-
-public sealed class DatabaseInitializer
-{
-    private readonly IDbConnectionFactory _factory;
-    private readonly DatabaseOptions _options;
-    private readonly ISqlServerDiscoveryService _discovery;
-    private readonly ILogger<DatabaseInitializer> _logger;
-
-    public DatabaseInitializer(
-        IDbConnectionFactory factory,
-        DatabaseOptions options,
-        ISqlServerDiscoveryService discovery,
-        ILogger<DatabaseInitializer> logger)
-    {
-        _factory = factory;
-        _options = options;
-        _discovery = discovery;
-        _logger = logger;
-    }
+    // Chave arbitrária do pg_advisory_lock usado durante a migração.
+    private const long MigrationLockKey = 0x504C5553_4254; // "PLUSBT"
 
     public async Task InitializeAsync(CancellationToken ct = default)
     {
         try
         {
-            await ValidateSchemaAsync(ct);
+            await using var conn = await factory.OpenAsync(ct);
+            await MigrateAsync(conn, ct);
+            LogConnected(logger, conn.Host ?? "?");
         }
-        catch (SqlException ex) when (_options.AutoDiscover)
+        catch (Exception ex) when (ex is NpgsqlException or TimeoutException or IOException)
         {
-            _logger.LogWarning(ex,
-                "Não foi possível conectar em {DataSource}. Procurando o servidor na rede local...",
-                new SqlConnectionStringBuilder(_options.ActiveConnectionString).DataSource);
-
-            var discovered = await _discovery.TryFindReachableServerAsync(_options.ConnectionString, ct);
-            if (discovered is null)
-            {
-                _logger.LogCritical(ex, "Falha ao conectar no SQL Server (descoberta automática também falhou).");
-                throw;
-            }
-
-            _options.ActiveConnectionString = discovered;
-            await ValidateSchemaAsync(ct);
-        }
-        catch (SqlException ex)
-        {
-            _logger.LogCritical(ex, "Falha ao conectar no SQL Server.");
-            throw;
-        }
-        catch (Exception ex) when (ex is not InvalidOperationException)
-        {
-            _logger.LogCritical(ex, "Falha inesperada ao validar o banco de dados.");
+            LogConnectionFailed(logger, ex);
             throw;
         }
     }
 
-    // Colunas que o app espera existir, mas podem faltar em um banco criado antes
-    // dessa versão. Verificadas e criadas automaticamente a cada startup — evita
-    // precisar rodar ALTER TABLE manualmente em cada servidor.
-    private static readonly (string Table, string Column, string Definition)[] RequiredColumns =
-    [
-        ("Labels", "AbertaEm", "DATETIME NULL"),
-        // Texto original de uma validade inválida (a linha entra na fila com aviso).
-        ("Labels", "ValidadeTexto", "NVARCHAR(100) NULL"),
-        // Problemas encontrados na importação, um por linha.
-        ("Labels", "Avisos", "NVARCHAR(1000) NULL"),
-    ];
-
-    // Colunas que precisam aceitar NULL (criadas como NOT NULL em versões antigas).
-    private static readonly (string Table, string Column, string Type)[] NullableColumns =
-    [
-        // Validade inválida na planilha é gravada como NULL em vez de descartar a linha.
-        ("Labels", "Validade", "DATE"),
-    ];
-
-    private async Task ValidateSchemaAsync(CancellationToken ct)
+    private async Task MigrateAsync(NpgsqlConnection conn, CancellationToken ct)
     {
-        await using var conn = (SqlConnection)await _factory.OpenAsync(ct);
-
-        var tables = await conn.QueryAsync<string>("""
-            SELECT TABLE_NAME
-            FROM   INFORMATION_SCHEMA.TABLES
-            WHERE  TABLE_TYPE = 'BASE TABLE'
-              AND  TABLE_NAME IN ('Labels', 'ImportBatches')
-            """);
-
-        var found = tables.ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        if (!found.Contains("Labels") || !found.Contains("ImportBatches"))
-            throw new InvalidOperationException(
-                "Tabelas não encontradas. Execute o script de schema no servidor.");
-
-        await EnsureColumnsExistAsync(conn, ct);
-
-        _logger.LogInformation("Conexão com SQL Server validada com sucesso. Servidor: {DataSource}",
-            new SqlConnectionStringBuilder(_options.ActiveConnectionString).DataSource);
-    }
-
-    private async Task EnsureColumnsExistAsync(SqlConnection conn, CancellationToken ct)
-    {
-        foreach (var (table, column, definition) in RequiredColumns)
+        await conn.ExecuteAsync("select pg_advisory_lock(@Key);", new { Key = MigrationLockKey });
+        try
         {
-            try
-            {
-                var exists = await conn.ExecuteScalarAsync<int>("""
-                    SELECT COUNT(*) FROM sys.columns
-                    WHERE object_id = OBJECT_ID(@FullTable) AND name = @Column
-                    """,
-                    new { FullTable = $"dbo.{table}", Column = column });
+            await conn.ExecuteAsync("""
+                create schema if not exists plusbt;
+                create table if not exists plusbt.schema_versao (
+                    versao      integer primary key,
+                    aplicada_em timestamptz not null default now()
+                );
+                alter table plusbt.schema_versao enable row level security;
+                """);
 
-                if (exists > 0)
+            var aplicadas = (await conn.QueryAsync<int>("select versao from plusbt.schema_versao;")).ToHashSet();
+
+            foreach (var (versao, nome, sql) in LoadMigrations())
+            {
+                if (aplicadas.Contains(versao))
                     continue;
 
-                _logger.LogWarning(
-                    "Coluna {Table}.{Column} não encontrada no banco — criando automaticamente.",
-                    table, column);
-
-                await conn.ExecuteAsync($"ALTER TABLE dbo.{table} ADD {column} {definition};");
-            }
-            catch (Exception ex)
-            {
-                // Não bloqueia o startup: se faltar permissão de ALTER, o app segue
-                // funcionando (só a funcionalidade que depende dessa coluna falha).
-                _logger.LogError(ex,
-                    "Falha ao criar coluna {Table}.{Column} automaticamente. " +
-                    "Se o usuário/login não tiver permissão de ALTER TABLE, crie manualmente.",
-                    table, column);
+                LogApplyingMigration(logger, nome);
+                await using var tx = await conn.BeginTransactionAsync(ct);
+                await conn.ExecuteAsync(sql, transaction: tx);
+                await conn.ExecuteAsync("insert into plusbt.schema_versao (versao) values (@Versao);",
+                    new { Versao = versao }, tx);
+                await tx.CommitAsync(ct);
             }
         }
-
-        foreach (var (table, column, type) in NullableColumns)
+        finally
         {
-            try
-            {
-                var notNull = await conn.ExecuteScalarAsync<int>("""
-                    SELECT COUNT(*) FROM sys.columns
-                    WHERE object_id = OBJECT_ID(@FullTable) AND name = @Column AND is_nullable = 0
-                    """,
-                    new { FullTable = $"dbo.{table}", Column = column });
-
-                if (notNull == 0)
-                    continue;
-
-                _logger.LogWarning(
-                    "Coluna {Table}.{Column} não aceita NULL — alterando automaticamente.", table, column);
-
-                await conn.ExecuteAsync($"ALTER TABLE dbo.{table} ALTER COLUMN {column} {type} NULL;");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Falha ao tornar a coluna {Table}.{Column} anulável. " +
-                    "Execute manualmente: ALTER TABLE dbo.{Table} ALTER COLUMN {Column} {Type} NULL;",
-                    table, column, table, column, type);
-            }
+            await conn.ExecuteAsync("select pg_advisory_unlock(@Key);", new { Key = MigrationLockKey });
         }
     }
+
+    private static IEnumerable<(int Versao, string Nome, string Sql)> LoadMigrations()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+
+        return assembly.GetManifestResourceNames()
+            .Select(name => (Name: name, Match: MigrationName().Match(name)))
+            .Where(x => x.Match.Success)
+            .Select(x =>
+            {
+                using var stream = assembly.GetManifestResourceStream(x.Name)!;
+                using var reader = new StreamReader(stream);
+                return (int.Parse(x.Match.Groups[1].Value), x.Match.Groups[0].Value, reader.ReadToEnd());
+            })
+            .OrderBy(m => m.Item1)
+            .ToList();
+    }
+
+    [GeneratedRegex(@"Migrations\.(\d{3})_[\w-]+\.sql$")]
+    private static partial Regex MigrationName();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Banco conectado e atualizado. Servidor: {Host}")]
+    private static partial void LogConnected(ILogger logger, string host);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Aplicando migração do banco: {Nome}")]
+    private static partial void LogApplyingMigration(ILogger logger, string nome);
+
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Falha ao conectar no banco (Supabase).")]
+    private static partial void LogConnectionFailed(ILogger logger, Exception ex);
 }

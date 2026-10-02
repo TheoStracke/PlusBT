@@ -13,17 +13,14 @@ namespace Busca_BT.Infrastructure
             services.AddSingleton(sp =>
             {
                 var settings = sp.GetRequiredService<IConnectionSettingsStore>().Load();
-                var connectionString = settings.BuildConnectionString();
                 return new DatabaseOptions
                 {
-                    ConnectionString = connectionString,
-                    ActiveConnectionString = connectionString,
-                    AutoDiscover = settings.AutoDiscover
+                    // Vazio quando ainda não há senha: o app abre direto em Configurações.
+                    ConnectionString = settings.IsComplete ? settings.BuildConnectionString() : string.Empty
                 };
             });
 
-            services.AddSingleton<IDbConnectionFactory, SqlServerConnectionFactory>();
-            services.AddSingleton<ISqlServerDiscoveryService, SqlServerDiscoveryService>();
+            services.AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>();
             services.AddSingleton<DatabaseInitializer>();
 
             services.AddSingleton<ILabelRepository, LabelRepository>();

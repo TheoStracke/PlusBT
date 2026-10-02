@@ -1,12 +1,9 @@
 using Busca_BT.Models;
 using Dapper;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Npgsql;
+using NpgsqlTypes;
 using System.IO;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using System;
 
 namespace Busca_BT.Data
 {
@@ -20,16 +17,21 @@ namespace Busca_BT.Data
         Task<IEnumerable<LabelRecord>> GetAllTemplatesMasterAsync(); // Busca apenas o Acervo
         Task<bool> AssociateLabelFileAsync(int id, string filePath);
         Task<bool> MarcarComoAbertaAsync(int id, CancellationToken ct = default);
-        Task<int> CreateImportBatchAsync(string fileName, int total, int imported, int skipped);
         Task<IEnumerable<ImportBatchRecord>> GetBatchesAsync(CancellationToken ct = default);
         Task DeleteBatchAsync(int batchId, CancellationToken ct = default);
-        Task<int> ReplaceAllAsync(IEnumerable<LabelRecord> records, int batchId);
+
+        /// <summary>
+        /// Registra a importação e substitui a fila pelos itens dela, numa transação
+        /// única: se a conexão cair no meio, nada muda. Retorna o id da importação.
+        /// </summary>
+        Task<int> ReplaceQueueAsync(string fileName, int total, int skipped, IReadOnlyList<LabelRecord> records);
+
         Task<int> ClearQueueAsync(); // Apaga a fila atual (o histórico de importações é mantido)
         Task<int> UpsertTemplatesAsync(IEnumerable<(string FileName, string FilePath)> templates);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // Implementação com Dapper
+    // Implementação com Dapper + Npgsql (Supabase / Postgres, schema plusbt)
     // ────────────────────────────────────────────────────────────────────────────
 
     public sealed partial class LabelRepository(
@@ -38,13 +40,36 @@ namespace Busca_BT.Data
     {
         // ── READ ─────────────────────────────────────────────────────────────
 
+        // O vínculo com o template (plusbt.templates) não é feito aqui com JOIN exato: é feito
+        // em LabelDiagnostics, que tolera espaços, maiúsculas, zeros à esquerda e sufixos.
+        private const string BaseSelectSql = """
+            select id               as "Id",
+                   item             as "Item",
+                   importacao_id    as "BatchId",
+                   invoice          as "Invoice",
+                   codigo           as "Codigo",
+                   descricao        as "DescricaoAnvisa",
+                   qtd              as "QtdInvoice",
+                   lote             as "Lote",
+                   validade         as "Validade",
+                   validade_texto   as "ValidadeTexto",
+                   registro_anvisa  as "RegistroAnvisa",
+                   lpn              as "Lpn",
+                   local            as "Local",
+                   avisos           as "Avisos",
+                   importado_em     as "ImportedAt",
+                   atualizado_em    as "UpdatedAt",
+                   aberta_em        as "AbertaEm"
+            from   plusbt.itens
+            """;
+
         public async Task<IReadOnlyList<LabelRecord>> GetAllAsync()
         {
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync();
+                await using var conn = await factory.OpenAsync();
                 // Ordem de inserção = ordem da planilha (o Item é numerado por invoice).
-                var rows = await conn.QueryAsync<LabelRecord>($"{BaseSelectSql} ORDER BY L.Id ASC;");
+                var rows = await conn.QueryAsync<LabelRecord>($"{BaseSelectSql} order by id;");
                 return rows.AsList();
             }
             catch (Exception ex)
@@ -54,27 +79,52 @@ namespace Busca_BT.Data
             }
         }
 
-        // Traz apenas os templates cadastrados no acervo intocável (Para a tela de Gerenciamento)
+        // Traz apenas os templates cadastrados no acervo (para a tela Templates e o vínculo da fila)
         public async Task<IEnumerable<LabelRecord>> GetAllTemplatesMasterAsync()
         {
-            var sql = @"
-                SELECT
-                    Id,
-                    Codigo,
-                    '' AS DescricaoAnvisa,
-                    LabelFilePath,
-                    UpdatedAt
-                FROM dbo.Templates
-                ORDER BY Codigo ASC";
+            const string sql = """
+                select id             as "Id",
+                       codigo         as "Codigo",
+                       ''             as "DescricaoAnvisa",
+                       arquivo        as "LabelFilePath",
+                       atualizado_em  as "UpdatedAt"
+                from   plusbt.templates
+                order  by codigo;
+                """;
 
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync();
+                await using var conn = await factory.OpenAsync();
                 return await conn.QueryAsync<LabelRecord>(sql);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Erro ao buscar Master Templates");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<ImportBatchRecord>> GetBatchesAsync(CancellationToken ct = default)
+        {
+            const string sql = """
+                select id            as "Id",
+                       arquivo       as "FileName",
+                       importado_em  as "ImportedAt",
+                       total         as "TotalRows",
+                       importados    as "ImportedRows",
+                       ignorados     as "SkippedRows"
+                from   plusbt.importacoes
+                order  by importado_em desc;
+                """;
+
+            try
+            {
+                await using var conn = await factory.OpenAsync(ct);
+                return await conn.QueryAsync<ImportBatchRecord>(sql);
+            }
+            catch (Exception ex)
+            {
+                LogGetBatchesError(logger, ex);
                 throw;
             }
         }
@@ -88,22 +138,17 @@ namespace Busca_BT.Data
             if (!File.Exists(filePath))
                 throw new FileNotFoundException($"Arquivo não encontrado: {filePath}", filePath);
 
-            // ATENÇÃO: Agora ele atualiza o ACERVO (dbo.Templates), mantendo o histórico protegido!
             const string sql = """
-                UPDATE dbo.Templates
-                SET    LabelFilePath = @FilePath,
-                       UpdatedAt     = SYSUTCDATETIME()
-                WHERE  Id = @Id;
+                update plusbt.templates
+                set    arquivo = @FilePath,
+                       atualizado_em = now()
+                where  id = @Id;
                 """;
 
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync();
-                var rows = await conn.ExecuteAsync(sql, new
-                {
-                    FilePath = filePath,
-                    Id = id
-                });
+                await using var conn = await factory.OpenAsync();
+                var rows = await conn.ExecuteAsync(sql, new { FilePath = filePath, Id = id });
 
                 if (rows > 0)
                     LogAssociateFileSuccess(logger, filePath, id);
@@ -122,14 +167,15 @@ namespace Busca_BT.Data
         public async Task<bool> MarcarComoAbertaAsync(int id, CancellationToken ct = default)
         {
             const string sql = """
-                UPDATE dbo.Labels
-                SET    AbertaEm = SYSUTCDATETIME()
-                WHERE  Id = @Id AND AbertaEm IS NULL;
+                update plusbt.itens
+                set    aberta_em = now(),
+                       atualizado_em = now()
+                where  id = @Id and aberta_em is null;
                 """;
 
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync(ct);
+                await using var conn = await factory.OpenAsync(ct);
                 var rows = await conn.ExecuteAsync(sql, new { Id = id });
                 return rows > 0;
             }
@@ -140,63 +186,14 @@ namespace Busca_BT.Data
             }
         }
 
-        public async Task<int> CreateImportBatchAsync(
-            string fileName, int total, int imported, int skipped)
-        {
-            const string sql = """
-                INSERT INTO dbo.ImportBatches (FileName, TotalRows, ImportedRows, SkippedRows)
-                OUTPUT INSERTED.Id
-                VALUES (@FileName, @TotalRows, @ImportedRows, @SkippedRows);
-                """;
-
-            try
-            {
-                await using var conn = (SqlConnection)await factory.OpenAsync();
-                return await conn.QuerySingleAsync<int>(sql, new
-                {
-                    FileName = Path.GetFileName(fileName),
-                    TotalRows = total,
-                    ImportedRows = imported,
-                    SkippedRows = skipped
-                });
-            }
-            catch (Exception ex)
-            {
-                LogCreateBatchError(logger, fileName, ex);
-                throw;
-            }
-        }
-
-        public async Task<IEnumerable<ImportBatchRecord>> GetBatchesAsync(CancellationToken ct = default)
-        {
-            const string sql = """
-                SELECT Id, FileName, ImportedAt, TotalRows, ImportedRows, SkippedRows
-                FROM   dbo.ImportBatches
-                ORDER  BY ImportedAt DESC
-                """;
-
-            try
-            {
-                await using var conn = (SqlConnection)await factory.OpenAsync(ct);
-                return await conn.QueryAsync<ImportBatchRecord>(sql);
-            }
-            catch (Exception ex)
-            {
-                LogGetBatchesError(logger, ex);
-                throw;
-            }
-        }
-
         public async Task DeleteBatchAsync(int batchId, CancellationToken ct = default)
         {
-            const string sql = """
-                DELETE FROM dbo.Labels        WHERE BatchId = @Id;
-                DELETE FROM dbo.ImportBatches WHERE Id      = @Id;
-                """;
+            // Os itens da importação saem junto (on delete cascade).
+            const string sql = "delete from plusbt.importacoes where id = @Id;";
 
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync(ct);
+                await using var conn = await factory.OpenAsync(ct);
                 await conn.ExecuteAsync(sql, new { Id = batchId });
             }
             catch (Exception ex)
@@ -210,8 +207,8 @@ namespace Busca_BT.Data
         {
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync();
-                var rows = await conn.ExecuteAsync("DELETE FROM dbo.Labels;");
+                await using var conn = await factory.OpenAsync();
+                var rows = await conn.ExecuteAsync("delete from plusbt.itens;");
                 LogQueueCleared(logger, rows);
                 return rows;
             }
@@ -222,52 +219,70 @@ namespace Busca_BT.Data
             }
         }
 
-        public async Task<int> ReplaceAllAsync(IEnumerable<LabelRecord> records, int batchId)
+        public async Task<int> ReplaceQueueAsync(
+            string fileName, int total, int skipped, IReadOnlyList<LabelRecord> records)
         {
-            const string sqlDelete = "DELETE FROM dbo.Labels;";
-            const string sqlInsert = """
-                INSERT INTO dbo.Labels
-                    (Item, Invoice, Codigo, DescricaoAnvisa, QtdInvoice,
-                     Lote, Validade, ValidadeTexto, RegistroAnvisa, Lpn, LabelFilePath, ImportedAt, BatchId, Avisos)
-                VALUES
-                    (@Item, @Invoice, @Codigo, @DescricaoAnvisa, @QtdInvoice,
-                     @Lote, @Validade, @ValidadeTexto, @RegistroAnvisa, @Lpn, @LabelFilePath, @ImportedAt, @BatchId, @Avisos);
+            const string sqlBatch = """
+                insert into plusbt.importacoes (arquivo, total, importados, ignorados)
+                values (@Arquivo, @Total, @Importados, @Ignorados)
+                returning id;
                 """;
 
+            // COPY binário: todas as linhas numa ida só ao servidor (rápido mesmo com internet lenta).
+            const string sqlCopy = """
+                copy plusbt.itens
+                    (importacao_id, item, invoice, codigo, descricao, qtd, lote, validade,
+                     validade_texto, registro_anvisa, lpn, local, avisos, importado_em)
+                from stdin (format binary)
+                """;
+
+            var batchId = 0;
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync();
-                await using var tx = (SqlTransaction)await conn.BeginTransactionAsync();
+                await using var conn = await factory.OpenAsync();
+                await using var tx = await conn.BeginTransactionAsync();
 
-                // Apaga a Fila do Dia antiga!
-                await conn.ExecuteAsync(sqlDelete, transaction: tx);
-
-                var inserted = 0;
-                foreach (var r in records)
+                batchId = await conn.QuerySingleAsync<int>(sqlBatch, new
                 {
-                    await conn.ExecuteAsync(sqlInsert, new
+                    Arquivo = Path.GetFileName(fileName),
+                    Total = total,
+                    Importados = records.Count,
+                    Ignorados = skipped
+                }, tx);
+
+                // Apaga a fila antiga (o histórico de importações é mantido).
+                await conn.ExecuteAsync("delete from plusbt.itens;", transaction: tx);
+
+                await using (var writer = await conn.BeginBinaryImportAsync(sqlCopy))
+                {
+                    foreach (var r in records)
                     {
-                        r.Item,
-                        r.Invoice,
-                        r.Codigo,
-                        r.DescricaoAnvisa,
-                        r.QtdInvoice,
-                        r.Lote,
-                        r.Validade,
-                        r.ValidadeTexto,
-                        r.RegistroAnvisa,
-                        r.Lpn,
-                        r.LabelFilePath, // Estará NULL (vem do ExcelImportService)
-                        r.ImportedAt,
-                        BatchId = batchId,
-                        r.Avisos
-                    }, tx);
-                    inserted++;
+                        await writer.StartRowAsync();
+                        await writer.WriteAsync(batchId, NpgsqlDbType.Integer);
+                        await writer.WriteAsync(r.Item, NpgsqlDbType.Integer);
+                        await writer.WriteAsync(r.Invoice, NpgsqlDbType.Text);
+                        await writer.WriteAsync(r.Codigo, NpgsqlDbType.Text);
+                        await writer.WriteAsync(r.DescricaoAnvisa, NpgsqlDbType.Text);
+                        await writer.WriteAsync(r.QtdInvoice, NpgsqlDbType.Integer);
+                        await writer.WriteAsync(r.Lote, NpgsqlDbType.Text);
+                        if (r.Validade is DateTime validade)
+                            await writer.WriteAsync(DateOnly.FromDateTime(validade), NpgsqlDbType.Date);
+                        else
+                            await writer.WriteNullAsync();
+                        await WriteNullableTextAsync(writer, r.ValidadeTexto);
+                        await writer.WriteAsync(r.RegistroAnvisa, NpgsqlDbType.Text);
+                        await writer.WriteAsync(r.Lpn, NpgsqlDbType.Text);
+                        await writer.WriteAsync(r.Local, NpgsqlDbType.Text);
+                        await WriteNullableTextAsync(writer, r.Avisos);
+                        await writer.WriteAsync(DateTime.SpecifyKind(r.ImportedAt, DateTimeKind.Utc), NpgsqlDbType.TimestampTz);
+                    }
+
+                    await writer.CompleteAsync();
                 }
 
-                tx.Commit();
-                LogInsertBatchDone(logger, inserted, batchId);
-                return inserted;
+                await tx.CommitAsync();
+                LogInsertBatchDone(logger, records.Count, batchId);
+                return batchId;
             }
             catch (Exception ex)
             {
@@ -276,29 +291,33 @@ namespace Busca_BT.Data
             }
         }
 
+        private static async Task WriteNullableTextAsync(NpgsqlBinaryImporter writer, string? value)
+        {
+            if (value is null)
+                await writer.WriteNullAsync();
+            else
+                await writer.WriteAsync(value, NpgsqlDbType.Text);
+        }
+
         public async Task<int> UpsertTemplatesAsync(IEnumerable<(string FileName, string FilePath)> templates)
         {
-            // Salva apenas no Acervo (Tabela Templates)
             const string sqlUpsert = """
-                IF EXISTS (SELECT 1 FROM dbo.Templates WHERE Codigo = @Codigo)
-                    UPDATE dbo.Templates SET LabelFilePath = @FilePath, UpdatedAt = SYSUTCDATETIME() WHERE Codigo = @Codigo;
-                ELSE
-                    INSERT INTO dbo.Templates (Codigo, LabelFilePath, UpdatedAt) VALUES (@Codigo, @FilePath, SYSUTCDATETIME());
+                insert into plusbt.templates (codigo, arquivo, atualizado_em)
+                values (@Codigo, @FilePath, now())
+                on conflict (codigo) do update
+                    set arquivo = excluded.arquivo,
+                        atualizado_em = now();
                 """;
 
             try
             {
-                await using var conn = (SqlConnection)await factory.OpenAsync();
-                await using var tx = (SqlTransaction)await conn.BeginTransactionAsync();
+                await using var conn = await factory.OpenAsync();
+                await using var tx = await conn.BeginTransactionAsync();
 
-                var count = 0;
-                foreach (var (fileName, filePath) in templates)
-                {
-                    var rows = await conn.ExecuteAsync(sqlUpsert, new { Codigo = fileName, FilePath = filePath }, tx);
-                    if (rows > 0) count++;
-                }
+                var lista = templates.Select(t => new { Codigo = t.FileName, t.FilePath }).ToList();
+                var count = await conn.ExecuteAsync(sqlUpsert, lista, tx);
 
-                tx.Commit();
+                await tx.CommitAsync();
                 return count;
             }
             catch (Exception ex)
@@ -307,17 +326,6 @@ namespace Busca_BT.Data
                 throw;
             }
         }
-
-        // ── SQL base ─────────────────────────────────────────────────────────
-
-        // O vínculo com o template (dbo.Templates) não é feito aqui com JOIN exato: é feito
-        // em LabelDiagnostics, que tolera espaços, maiúsculas, zeros à esquerda e sufixos.
-        private const string BaseSelectSql = """
-            SELECT L.Id, L.Item, L.BatchId, L.Invoice, L.Codigo, L.DescricaoAnvisa, L.QtdInvoice,
-                   L.Lote, L.Validade, L.ValidadeTexto, L.RegistroAnvisa, L.Lpn,
-                   L.ImportedAt, L.UpdatedAt, L.AbertaEm, L.Avisos
-            FROM   dbo.Labels L
-            """;
 
         // ── LoggerMessage source generators (CA1848) ─────────────────────────
 
@@ -344,9 +352,6 @@ namespace Busca_BT.Data
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao deletar etiquetas do lote {BatchId}")]
         private static partial void LogDeleteBatchError(ILogger logger, int batchId, Exception ex);
-
-        [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao criar registro de lote para '{FileName}'")]
-        private static partial void LogCreateBatchError(ILogger logger, string fileName, Exception ex);
 
         [LoggerMessage(Level = LogLevel.Information, Message = "Fila limpa: {Count} etiqueta(s) removida(s)")]
         private static partial void LogQueueCleared(ILogger logger, int count);

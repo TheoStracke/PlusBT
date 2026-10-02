@@ -1,7 +1,7 @@
-using Busca_BT.Data;
 using Busca_BT.Models;
-using Microsoft.Extensions.Configuration;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Busca_BT.Infrastructure;
@@ -13,30 +13,34 @@ public interface IConnectionSettingsStore
 }
 
 /// <summary>
-/// Persiste a configuração de conexão em %AppData%\BuscaBT\connection.settings.json —
-/// fora da pasta do app, para que o usuário possa trocar servidor/rede sem editar
-/// appsettings.json e recompilar. No primeiro uso, semeia com o valor de
-/// appsettings.json (compilado) como ponto de partida.
+/// Persiste a conexão com o Supabase em %AppData%\BuscaBT\supabase.settings.json.
+/// A senha é gravada criptografada com DPAPI (só o mesmo usuário do Windows, no mesmo
+/// PC, consegue ler). Se o arquivo ainda não existe, usa um .env (desenvolvimento:
+/// procurado na pasta do .exe e nas pastas acima) ou as variáveis de ambiente SUPABASE_DB_*.
 /// </summary>
 public sealed class ConnectionSettingsStore : IConnectionSettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("PlusBT.Supabase");
 
     private readonly string _filePath;
-    private readonly string _seedConnectionString;
-    private readonly bool _seedAutoDiscover;
 
-    public ConnectionSettingsStore(IConfiguration configuration)
+    public ConnectionSettingsStore()
     {
         var folder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "BuscaBT");
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuscaBT");
         Directory.CreateDirectory(folder);
-        _filePath = Path.Combine(folder, "connection.settings.json");
+        _filePath = Path.Combine(folder, "supabase.settings.json");
+    }
 
-        var dbSection = configuration.GetSection(DatabaseOptions.Section);
-        _seedConnectionString = dbSection["ConnectionString"] ?? string.Empty;
-        _seedAutoDiscover = dbSection.GetValue("AutoDiscover", true);
+    // Formato em disco: igual ao ConnectionSettings, mas com a senha criptografada.
+    private sealed class Stored
+    {
+        public string Host { get; set; } = ConnectionSettings.DefaultHost;
+        public int Port { get; set; } = 5432;
+        public string Database { get; set; } = "postgres";
+        public string Username { get; set; } = string.Empty;
+        public string PasswordProtected { get; set; } = string.Empty;
     }
 
     public ConnectionSettings Load()
@@ -45,25 +49,99 @@ public sealed class ConnectionSettingsStore : IConnectionSettingsStore
         {
             try
             {
-                var json = File.ReadAllText(_filePath);
-                var settings = JsonSerializer.Deserialize<ConnectionSettings>(json);
-                if (settings is not null)
-                    return settings;
+                var stored = JsonSerializer.Deserialize<Stored>(File.ReadAllText(_filePath));
+                if (stored is not null)
+                {
+                    return new ConnectionSettings
+                    {
+                        Host = stored.Host,
+                        Port = stored.Port,
+                        Database = stored.Database,
+                        Username = stored.Username,
+                        Password = Unprotect(stored.PasswordProtected)
+                    };
+                }
             }
             catch
             {
-                // Arquivo corrompido/ilegível: cai para a configuração inicial abaixo.
+                // Arquivo corrompido ou de outro usuário do Windows: cai no .env / variáveis abaixo.
             }
         }
 
-        var seeded = ConnectionSettings.FromConnectionString(_seedConnectionString);
-        seeded.AutoDiscover = _seedAutoDiscover;
-        return seeded;
+        return FromEnvironment();
     }
 
     public void Save(ConnectionSettings settings)
     {
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
-        File.WriteAllText(_filePath, json);
+        var stored = new Stored
+        {
+            Host = settings.Host,
+            Port = settings.Port,
+            Database = settings.Database,
+            Username = settings.Username,
+            PasswordProtected = Protect(settings.Password)
+        };
+        File.WriteAllText(_filePath, JsonSerializer.Serialize(stored, JsonOptions));
+    }
+
+    private static string Protect(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        var bytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(value), Entropy, DataProtectionScope.CurrentUser);
+        return Convert.ToBase64String(bytes);
+    }
+
+    private static string Unprotect(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        var bytes = ProtectedData.Unprotect(Convert.FromBase64String(value), Entropy, DataProtectionScope.CurrentUser);
+        return Encoding.UTF8.GetString(bytes);
+    }
+
+    private static ConnectionSettings FromEnvironment()
+    {
+        var values = ReadDotEnv();
+
+        string? Get(string key) =>
+            Environment.GetEnvironmentVariable(key) is { Length: > 0 } fromEnv ? fromEnv
+            : values.TryGetValue(key, out var fromFile) && fromFile.Length > 0 ? fromFile
+            : null;
+
+        var settings = new ConnectionSettings();
+        settings.Host = Get("SUPABASE_DB_HOST") ?? settings.Host;
+        settings.Port = int.TryParse(Get("SUPABASE_DB_PORT"), out var port) ? port : settings.Port;
+        settings.Database = Get("SUPABASE_DB_NAME") ?? settings.Database;
+        settings.Username = Get("SUPABASE_DB_USER") ?? settings.Username;
+        settings.Password = Get("SUPABASE_DB_PASSWORD") ?? settings.Password;
+        return settings;
+    }
+
+    /// <summary>Lê o primeiro .env encontrado subindo a partir da pasta do .exe.</summary>
+    private static Dictionary<string, string> ReadDotEnv()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            var path = Path.Combine(dir.FullName, ".env");
+            if (!File.Exists(path))
+                continue;
+
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+                    continue;
+
+                var idx = trimmed.IndexOf('=');
+                if (idx <= 0)
+                    continue;
+
+                result[trimmed[..idx].Trim()] = trimmed[(idx + 1)..].Trim().Trim('"');
+            }
+            break;
+        }
+
+        return result;
     }
 }

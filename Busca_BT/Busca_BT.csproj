@@ -28,11 +28,15 @@
     <EmbeddedResource Include="appsettings.json">
       <LogicalName>Busca_BT.appsettings.json</LogicalName>
     </EmbeddedResource>
+    <!-- Scripts do banco aplicados automaticamente ao iniciar (DatabaseInitializer). -->
+    <EmbeddedResource Include="Data\Migrations\*.sql">
+      <LogicalName>Busca_BT.Data.Migrations.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-		<PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.*" />
+		<PackageReference Include="Npgsql" Version="9.0.5" />
 		<PackageReference Include="Dapper" Version="2.1.*" />
 		<PackageReference Include="ClosedXML" Version="0.102.*" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.*" />

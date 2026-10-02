@@ -137,10 +137,8 @@ namespace Busca_BT.Services
                     return ImportResult.Fail(
                         "Nenhuma linha válida para importar. A fila atual foi mantida.", skipped);
 
-                int batchId = await repository.CreateImportBatchAsync(
-                    filePath, total: totalRows, imported: records.Count, skipped: skipped.Count);
-
-                await repository.ReplaceAllAsync(records, batchId);
+                // Importação + troca da fila numa transação só: se a conexão cair, nada muda.
+                await repository.ReplaceQueueAsync(filePath, total: totalRows, skipped: skipped.Count, records);
 
                 LogImportFinished(logger, totalRows, records.Count, skipped.Count);
 

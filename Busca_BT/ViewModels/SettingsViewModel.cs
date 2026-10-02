@@ -3,16 +3,16 @@ using Busca_BT.Infrastructure;
 using Busca_BT.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using System.Threading.Tasks;
 
 namespace Busca_BT.ViewModels;
 
 /// <summary>
-/// Tela de Configurações: permite trocar servidor/instância/credenciais do SQL Server
-/// sem precisar editar appsettings.json e recompilar o app. Fica salvo por máquina em
-/// %AppData%\BuscaBT\connection.settings.json.
+/// Tela de Configurações: conexão com o banco na nuvem (Supabase / Postgres).
+/// Fica salva por máquina em %AppData%\BuscaBT\supabase.settings.json, com a
+/// senha criptografada para o usuário do Windows.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -22,25 +22,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ILogger<SettingsViewModel> _logger;
 
     [ObservableProperty]
-    private string _server = string.Empty;
+    private string _host = string.Empty;
 
     [ObservableProperty]
-    private string _instance = string.Empty;
+    private string _port = "5432";
 
     [ObservableProperty]
     private string _database = string.Empty;
 
     [ObservableProperty]
-    private bool _useWindowsAuth = true;
-
-    [ObservableProperty]
-    private string _userId = string.Empty;
+    private string _username = string.Empty;
 
     [ObservableProperty]
     private string _password = string.Empty;
-
-    [ObservableProperty]
-    private bool _autoDiscover = true;
 
     [ObservableProperty]
     private string _statusText = string.Empty;
@@ -60,26 +54,20 @@ public sealed partial class SettingsViewModel : ObservableObject
         _logger = logger;
 
         var current = _store.Load();
-        Server = current.Server;
-        Instance = current.Instance;
+        Host = current.Host;
+        Port = current.Port.ToString();
         Database = current.Database;
-        UseWindowsAuth = current.UseWindowsAuth;
-        UserId = current.UserId;
+        Username = current.Username;
         Password = current.Password;
-        AutoDiscover = current.AutoDiscover;
     }
 
     private ConnectionSettings BuildSettings() => new()
     {
-        Server = Server.Trim(),
-        Instance = Instance.Trim(),
+        Host = Host.Trim(),
+        Port = int.TryParse(Port.Trim(), out var port) ? port : 5432,
         Database = Database.Trim(),
-        UseWindowsAuth = UseWindowsAuth,
-        UserId = UserId.Trim(),
-        Password = Password,
-        AutoDiscover = AutoDiscover,
-        TrustServerCertificate = true,
-        ConnectTimeoutSeconds = 10
+        Username = Username.Trim(),
+        Password = Password
     };
 
     [RelayCommand]
@@ -90,8 +78,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         try
         {
-            var connectionString = BuildSettings().BuildConnectionString();
-            await using var conn = new SqlConnection(connectionString);
+            var settings = BuildSettings();
+            if (!settings.IsComplete)
+            {
+                StatusText = "Preencha servidor, usuário e senha.";
+                return;
+            }
+
+            await using var conn = new NpgsqlConnection(settings.BuildConnectionString());
             await conn.OpenAsync();
             StatusText = "Conexão bem-sucedida.";
         }
@@ -117,10 +111,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             var settings = BuildSettings();
             _store.Save(settings);
 
-            var connectionString = settings.BuildConnectionString();
-            _dbOptions.ConnectionString = connectionString;
-            _dbOptions.ActiveConnectionString = connectionString;
-            _dbOptions.AutoDiscover = settings.AutoDiscover;
+            _dbOptions.ConnectionString = settings.IsComplete ? settings.BuildConnectionString() : string.Empty;
 
             await _initializer.InitializeAsync();
             StatusText = "Configuração salva. Conexão validada com sucesso.";
