@@ -1,0 +1,115 @@
+<UserControl x:Class="Busca_BT.OperadoresView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="24"/>
+            <ColumnDefinition Width="400"/>
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Grid.Row="0" Grid.ColumnSpan="3" LastChildFill="False" Margin="0,0,0,16">
+            <TextBlock DockPanel.Dock="Left" Text="Operadores" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <ui:Button DockPanel.Dock="Right" Content="Novo operador" Icon="{ui:SymbolIcon PersonAdd20}"
+                       Appearance="Primary" Command="{Binding NovoCommand}"/>
+        </DockPanel>
+
+        <!-- Lista -->
+        <Border Grid.Row="1" Grid.Column="0" CornerRadius="8" BorderThickness="1"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+            <ui:DataGrid ItemsSource="{Binding Operadores}"
+                         SelectedItem="{Binding Selecionado, Mode=TwoWay}"
+                         AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                         SelectionMode="Single" GridLinesVisibility="Horizontal">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="NOME" Binding="{Binding Nome}" Width="*"/>
+                    <DataGridTextColumn Header="PERFIL" Binding="{Binding PerfilTexto}" Width="140"/>
+                    <DataGridTemplateColumn Header="PIN" Width="70">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ui:SymbolIcon Symbol="LockClosed16" Margin="12,0" HorizontalAlignment="Left"
+                                               Visibility="{Binding TemPin, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="SITUAÇÃO" Width="110">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Margin="12,0" VerticalAlignment="Center" FontWeight="SemiBold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                            <Setter Property="Text" Value="Ativo"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Ativo}" Value="False">
+                                                    <Setter Property="Text" Value="Inativo"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </ui:DataGrid>
+        </Border>
+
+        <!-- Formulário -->
+        <ui:Card Grid.Row="1" Grid.Column="2" Padding="24" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="{Binding Titulo}" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16"/>
+
+                <TextBlock Text="Nome" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ui:TextBox Text="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
+
+                <TextBlock Text="Perfil" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ComboBox ItemsSource="{Binding Perfis}" DisplayMemberPath="Texto" SelectedValuePath="Valor"
+                          SelectedValue="{Binding Perfil}" Margin="0,0,0,16"/>
+
+                <CheckBox Content="Ativo (aparece na tela de entrada)" IsChecked="{Binding Ativo}" Margin="0,0,0,16"
+                          Visibility="{Binding EditandoExistente, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                <TextBlock Text="PIN (opcional, 4 a 8 números)" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <ui:PasswordBox x:Name="PinBox" MaxLength="8" Margin="0,0,0,4"/>
+                <TextBlock FontSize="11" Opacity="0.65" TextWrapping="Wrap" Margin="0,0,0,8">
+                    <TextBlock.Style>
+                        <Style TargetType="{x:Type TextBlock}">
+                            <Setter Property="Text" Value="Deixe vazio para entrar sem PIN."/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding TemPinAtual}" Value="True">
+                                    <Setter Property="Text" Value="Este operador já tem PIN. Deixe vazio para manter o atual."/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <CheckBox Content="Remover o PIN (passa a entrar sem PIN)" IsChecked="{Binding RemoverPin}" Margin="0,0,0,8"
+                          Visibility="{Binding TemPinAtual, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                <ui:Button Content="Salvar" Icon="{ui:SymbolIcon Save20}" Appearance="Primary"
+                           HorizontalAlignment="Left" Margin="0,12,0,0" Command="{Binding SalvarCommand}"/>
+
+                <TextBlock Text="{Binding StatusText}" FontSize="13" TextWrapping="Wrap" Margin="0,12,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="{x:Type TextBlock}">
+                            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusErro}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </ui:Card>
+    </Grid>
+</UserControl>

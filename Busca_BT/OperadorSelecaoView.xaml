@@ -1,0 +1,99 @@
+<UserControl x:Class="Busca_BT.OperadorSelecaoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    <!-- Tela "Quem está operando?": cobre o app inteiro até alguém entrar. -->
+    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="760" Margin="24">
+
+            <TextBlock Text="Quem está operando?" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock Text="Escolha o seu nome para começar. Tudo o que for feito fica registrado no seu nome."
+                       FontSize="13" Opacity="0.65" HorizontalAlignment="Center" Margin="0,6,0,28"/>
+
+            <ui:ProgressRing IsIndeterminate="True" Width="40" Height="40" HorizontalAlignment="Center"
+                             Visibility="{Binding Carregando, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+            <!-- Erro: sem banco não há operadores -->
+            <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,16"
+                    Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
+                    Visibility="{Binding TemErroCarregar, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding ErroCarregar}" TextWrapping="Wrap" FontSize="13"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <ui:Button Content="Tentar de novo" Icon="{ui:SymbolIcon ArrowClockwise20}" Appearance="Secondary"
+                                   Margin="0,0,8,0" Command="{Binding CarregarCommand}"/>
+                        <ui:Button Content="Configurações de conexão" Icon="{ui:SymbolIcon Settings20}" Appearance="Transparent"
+                                   Command="{Binding AbrirConfiguracoesCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Cartões dos operadores -->
+            <ItemsControl ItemsSource="{Binding Operadores}" HorizontalAlignment="Center">
+                <ItemsControl.Style>
+                    <Style TargetType="{x:Type ItemsControl}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding PedindoPin}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ItemsControl.Style>
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel HorizontalAlignment="Center"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <ui:Button Width="160" Height="170" Margin="8" Padding="12"
+                                   Appearance="Secondary"
+                                   Command="{Binding DataContext.EscolherCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                   CommandParameter="{Binding}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <Grid Width="64" Height="64" HorizontalAlignment="Center">
+                                    <Ellipse Fill="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                    <TextBlock Text="{Binding Iniciais}" FontSize="24" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                                <TextBlock Text="{Binding Nome}" FontSize="16" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Margin="0,12,0,2" TextTrimming="CharacterEllipsis"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding PerfilTexto}" FontSize="12" Opacity="0.65"/>
+                                    <ui:SymbolIcon Symbol="LockClosed16" FontSize="12" Opacity="0.65" Margin="6,0,0,0"
+                                                   ToolTip="Entra com PIN"
+                                                   Visibility="{Binding TemPin, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ui:Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- PIN do operador escolhido -->
+            <ui:Card Width="340" Padding="24" HorizontalAlignment="Center"
+                     Visibility="{Binding PedindoPin, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center">
+                        <Run Text="Olá, "/><Run Text="{Binding Selecionado.Nome, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock Text="Digite o seu PIN" FontSize="13" Opacity="0.65" HorizontalAlignment="Center" Margin="0,4,0,16"/>
+
+                    <ui:PasswordBox x:Name="PinBox" FontSize="20" HorizontalContentAlignment="Center"
+                                    PlaceholderText="PIN" MaxLength="8"/>
+
+                    <TextBlock Text="{Binding ErroPin}" FontSize="12" Margin="0,8,0,0" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource SystemFillColorCriticalBrush}"/>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
+                        <ui:Button Content="Voltar" Appearance="Secondary" MinWidth="100" Margin="0,0,8,0"
+                                   Command="{Binding VoltarCommand}"/>
+                        <ui:Button Content="Entrar" Appearance="Primary" MinWidth="100" IsDefault="True"
+                                   Command="{Binding ConfirmarPinCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </ui:Card>
+        </StackPanel>
+    </Grid>
+</UserControl>

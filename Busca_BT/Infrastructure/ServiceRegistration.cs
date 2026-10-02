@@ -23,6 +23,10 @@ namespace Busca_BT.Infrastructure
             services.AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>();
             services.AddSingleton<DatabaseInitializer>();
 
+            services.AddSingleton<ISessaoOperador, SessaoOperador>();
+            services.AddSingleton<IOperadorRepository, OperadorRepository>();
+            services.AddSingleton<IEventoService, EventoService>();
+
             services.AddSingleton<ILabelRepository, LabelRepository>();
             services.AddSingleton<IExcelImportService, ExcelImportService>();
             services.AddSingleton<IInvoiceReportService, InvoiceReportService>();

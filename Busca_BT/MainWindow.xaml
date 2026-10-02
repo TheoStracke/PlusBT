@@ -2,6 +2,7 @@
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:local="clr-namespace:Busca_BT"
                  Title="PlusBT"
                  Icon="pack://application:,,,/favicon.ico"
                  Height="800" Width="1360"
@@ -29,50 +30,94 @@
 
             <!-- Sidebar -->
             <Border Grid.Column="0" Background="{DynamicResource ControlFillColorDefaultBrush}">
-                <StackPanel Margin="12,16">
-                    <ui:Button Content="Home"
-                               Icon="{ui:SymbolIcon Home24}"
-                               Appearance="Transparent"
-                               HorizontalAlignment="Stretch"
-                               HorizontalContentAlignment="Left"
-                               Height="42" Margin="0,0,0,4"
-                               Command="{Binding ShowHomeCommand}"/>
-                    <ui:Button Content="Templates"
-                               Icon="{ui:SymbolIcon DocumentBriefcase24}"
-                               Appearance="Transparent"
-                               HorizontalAlignment="Stretch"
-                               HorizontalContentAlignment="Left"
-                               Height="42" Margin="0,0,0,4"
-                               Command="{Binding ShowTemplatesCommand}"/>
-                    <ui:Button Content="Histórico"
-                               Icon="{ui:SymbolIcon History24}"
-                               Appearance="Transparent"
-                               HorizontalAlignment="Stretch"
-                               HorizontalContentAlignment="Left"
-                               Height="42" Margin="0,0,0,4"
-                               Command="{Binding ShowHistoricoCommand}"/>
+                <DockPanel Margin="12,16">
 
-                    <Separator Margin="8,12"/>
+                    <!-- Operador atual (rodapé da barra lateral) -->
+                    <Border DockPanel.Dock="Bottom" CornerRadius="8" Padding="10"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                            Visibility="{Binding TemOperador, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <DockPanel>
+                                <Grid DockPanel.Dock="Left" Width="36" Height="36" Margin="0,0,10,0">
+                                    <Ellipse Fill="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                    <TextBlock Text="{Binding OperadorIniciais}" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding OperadorNome}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding OperadorPerfil}" FontSize="11" Opacity="0.65"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <ui:Button Content="Trocar operador"
+                                       Icon="{ui:SymbolIcon PersonSwap20}"
+                                       Appearance="Transparent"
+                                       HorizontalAlignment="Stretch"
+                                       Margin="0,8,0,0"
+                                       Command="{Binding TrocarOperadorCommand}"/>
+                        </StackPanel>
+                    </Border>
 
-                    <ui:Button Content="Configurações"
-                               Icon="{ui:SymbolIcon Settings24}"
-                               Appearance="Transparent"
-                               HorizontalAlignment="Stretch"
-                               HorizontalContentAlignment="Left"
-                               Height="42" Margin="0,0,0,4"
-                               Command="{Binding ShowSettingsCommand}"/>
-                    <ui:Button Content="Ajuda"
-                               Icon="{ui:SymbolIcon QuestionCircle24}"
-                               Appearance="Transparent"
-                               HorizontalAlignment="Stretch"
-                               HorizontalContentAlignment="Left"
-                               Height="42" Margin="0,0,0,4"
-                               Command="{Binding ShowHelpCommand}"/>
-                </StackPanel>
+                    <StackPanel>
+                        <ui:Button Content="Home"
+                                   Icon="{ui:SymbolIcon Home24}"
+                                   Appearance="Transparent"
+                                   HorizontalAlignment="Stretch"
+                                   HorizontalContentAlignment="Left"
+                                   Height="42" Margin="0,0,0,4"
+                                   Command="{Binding ShowHomeCommand}"/>
+                        <ui:Button Content="Templates"
+                                   Icon="{ui:SymbolIcon DocumentBriefcase24}"
+                                   Appearance="Transparent"
+                                   HorizontalAlignment="Stretch"
+                                   HorizontalContentAlignment="Left"
+                                   Height="42" Margin="0,0,0,4"
+                                   Command="{Binding ShowTemplatesCommand}"
+                                   Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <ui:Button Content="Histórico"
+                                   Icon="{ui:SymbolIcon History24}"
+                                   Appearance="Transparent"
+                                   HorizontalAlignment="Stretch"
+                                   HorizontalContentAlignment="Left"
+                                   Height="42" Margin="0,0,0,4"
+                                   Command="{Binding ShowHistoricoCommand}"/>
+
+                        <Separator Margin="8,12"/>
+
+                        <ui:Button Content="Operadores"
+                                   Icon="{ui:SymbolIcon People24}"
+                                   Appearance="Transparent"
+                                   HorizontalAlignment="Stretch"
+                                   HorizontalContentAlignment="Left"
+                                   Height="42" Margin="0,0,0,4"
+                                   Command="{Binding ShowOperadoresCommand}"
+                                   Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <ui:Button Content="Configurações"
+                                   Icon="{ui:SymbolIcon Settings24}"
+                                   Appearance="Transparent"
+                                   HorizontalAlignment="Stretch"
+                                   HorizontalContentAlignment="Left"
+                                   Height="42" Margin="0,0,0,4"
+                                   Command="{Binding ShowSettingsCommand}"
+                                   Visibility="{Binding PodeConfigurar, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <ui:Button Content="Ajuda"
+                                   Icon="{ui:SymbolIcon QuestionCircle24}"
+                                   Appearance="Transparent"
+                                   HorizontalAlignment="Stretch"
+                                   HorizontalContentAlignment="Left"
+                                   Height="42" Margin="0,0,0,4"
+                                   Command="{Binding ShowHelpCommand}"/>
+                    </StackPanel>
+                </DockPanel>
             </Border>
 
             <!-- Content region -->
             <ContentControl Grid.Column="1" Content="{Binding CurrentView}"/>
+
+            <!-- "Quem está operando?": cobre a barra lateral e o conteúdo até alguém entrar -->
+            <local:OperadorSelecaoView Grid.Column="0" Grid.ColumnSpan="2"
+                                       DataContext="{Binding Selecao}"
+                                       Visibility="{Binding DataContext.IsSelecaoVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}"/>
         </Grid>
     </Grid>
 </ui:FluentWindow>

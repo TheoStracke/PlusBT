@@ -21,11 +21,13 @@
                                Icon="{ui:SymbolIcon Delete20}"
                                Appearance="Secondary"
                                Margin="0,0,8,0"
+                               Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibilityConverter}}"
                                ToolTip="Remove todas as etiquetas da fila atual"
                                Command="{Binding AskClearQueueCommand}"/>
                     <ui:Button Content="Importar planilha"
                                Icon="{ui:SymbolIcon DocumentArrowUp20}"
                                Appearance="Primary"
+                               Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibilityConverter}}"
                                Command="{Binding ImportCommand}"/>
                 </StackPanel>
             </DockPanel>
@@ -203,6 +205,7 @@
                                                             <TextBlock Grid.Column="3" Text="{Binding Lote}" VerticalAlignment="Center"/>
                                                             <TextBlock Grid.Column="4" Text="{Binding Lpn}" VerticalAlignment="Center"/>
                                                             <ui:Button Grid.Column="5" MinWidth="80"
+                                                                       ToolTip="{Binding AbertaTexto}"
                                                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                        CommandParameter="{Binding}">
                                                                 <ui:Button.Style>

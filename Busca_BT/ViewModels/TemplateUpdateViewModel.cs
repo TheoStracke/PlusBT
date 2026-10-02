@@ -46,6 +46,7 @@ public sealed partial class TemplateUpdateViewModel : ObservableObject
     // ── Dependências ──────────────────────────────────────────────────────
     private readonly ILabelRepository _repo;
     private readonly ILogger<TemplateUpdateViewModel> _logger;
+    private readonly Services.IEventoService _eventos;
 
     // Pasta base onde os templates ficam armazenados no computador.
     private readonly string _templateBaseDir =
@@ -78,10 +79,11 @@ public sealed partial class TemplateUpdateViewModel : ObservableObject
 
     // ── Construtor ────────────────────────────────────────────────────────
 
-    public TemplateUpdateViewModel(ILabelRepository repo, ILogger<TemplateUpdateViewModel> logger)
+    public TemplateUpdateViewModel(ILabelRepository repo, ILogger<TemplateUpdateViewModel> logger, Services.IEventoService eventos)
     {
         _repo = repo;
         _logger = logger;
+        _eventos = eventos;
 
         // Quando o usuário digitar no campo de busca, refiltrar a lista.
         PropertyChanged += (_, e) =>
@@ -245,6 +247,13 @@ public sealed partial class TemplateUpdateViewModel : ObservableObject
             }
 
             var atualizados = await _repo.UpsertTemplatesAsync(templates);
+            await _eventos.RegistrarAsync(Services.Acoes.TemplateAlterado, detalhes: new
+            {
+                origem = copyFiles ? "sincronizar_pasta" : "importar_pasta",
+                pasta = sourceDir,
+                destino = destDir,
+                quantidade = templates.Count
+            });
 
             StatusText = copyFiles
                 ? $"Sincronização concluída. {atualizados} etiqueta(s) associada(s) na pasta:\n{destDir}"
@@ -292,6 +301,8 @@ public sealed partial class TemplateUpdateViewModel : ObservableObject
         {
             var codigo = Path.GetFileNameWithoutExtension(dlg.FileName);
             var count = await _repo.UpsertTemplatesAsync([(codigo, dlg.FileName)]);
+            await _eventos.RegistrarAsync(Services.Acoes.TemplateAlterado, codigo: codigo,
+                detalhes: new { origem = "importar_arquivo", arquivo = dlg.FileName });
 
             StatusText = count > 0
                 ? $"Arquivo associado: {Path.GetFileName(dlg.FileName)}"
@@ -388,6 +399,9 @@ public sealed partial class TemplateUpdateViewModel : ObservableObject
             }
 
             var ok = await _repo.AssociateLabelFileAsync(Selected.Id, destPath);
+            if (ok)
+                await _eventos.RegistrarAsync(Services.Acoes.TemplateAlterado, codigo: Selected.Codigo,
+                    detalhes: new { origem = "substituir_arquivo", arquivo = destPath });
 
             StatusText = ok
                 ? $"Template atualizado: {Path.GetFileName(destPath)}"

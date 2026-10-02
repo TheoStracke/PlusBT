@@ -8,7 +8,8 @@ public sealed record ImportBatchRecord(
     DateTime ImportedAt, // UTC, como gravado no banco
     int TotalRows,
     int ImportedRows,
-    int SkippedRows)
+    int SkippedRows,
+    string? ImportadoPor)
 {
     public DateTime ImportedAtLocal => ImportedAt.UtcToLocal();
 

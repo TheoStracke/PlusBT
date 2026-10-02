@@ -1,3 +1,4 @@
+using Busca_BT.Infrastructure;
 using Busca_BT.Models;
 using Dapper;
 using Microsoft.Extensions.Logging;
@@ -36,6 +37,7 @@ namespace Busca_BT.Data
 
     public sealed partial class LabelRepository(
         IDbConnectionFactory factory,
+        ISessaoOperador sessao,
         ILogger<LabelRepository> logger) : ILabelRepository
     {
         // ── READ ─────────────────────────────────────────────────────────────
@@ -43,24 +45,26 @@ namespace Busca_BT.Data
         // O vínculo com o template (plusbt.templates) não é feito aqui com JOIN exato: é feito
         // em LabelDiagnostics, que tolera espaços, maiúsculas, zeros à esquerda e sufixos.
         private const string BaseSelectSql = """
-            select id               as "Id",
-                   item             as "Item",
-                   importacao_id    as "BatchId",
-                   invoice          as "Invoice",
-                   codigo           as "Codigo",
-                   descricao        as "DescricaoAnvisa",
-                   qtd              as "QtdInvoice",
-                   lote             as "Lote",
-                   validade         as "Validade",
-                   validade_texto   as "ValidadeTexto",
-                   registro_anvisa  as "RegistroAnvisa",
-                   lpn              as "Lpn",
-                   local            as "Local",
-                   avisos           as "Avisos",
-                   importado_em     as "ImportedAt",
-                   atualizado_em    as "UpdatedAt",
-                   aberta_em        as "AbertaEm"
-            from   plusbt.itens
+            select i.id               as "Id",
+                   i.item             as "Item",
+                   i.importacao_id    as "BatchId",
+                   i.invoice          as "Invoice",
+                   i.codigo           as "Codigo",
+                   i.descricao        as "DescricaoAnvisa",
+                   i.qtd              as "QtdInvoice",
+                   i.lote             as "Lote",
+                   i.validade         as "Validade",
+                   i.validade_texto   as "ValidadeTexto",
+                   i.registro_anvisa  as "RegistroAnvisa",
+                   i.lpn              as "Lpn",
+                   i.local            as "Local",
+                   i.avisos           as "Avisos",
+                   i.importado_em     as "ImportedAt",
+                   i.atualizado_em    as "UpdatedAt",
+                   i.aberta_em        as "AbertaEm",
+                   o.nome             as "AbertaPor"
+            from   plusbt.itens i
+            left   join plusbt.operadores o on o.id = i.aberta_por
             """;
 
         public async Task<IReadOnlyList<LabelRecord>> GetAllAsync()
@@ -69,7 +73,7 @@ namespace Busca_BT.Data
             {
                 await using var conn = await factory.OpenAsync();
                 // Ordem de inserção = ordem da planilha (o Item é numerado por invoice).
-                var rows = await conn.QueryAsync<LabelRecord>($"{BaseSelectSql} order by id;");
+                var rows = await conn.QueryAsync<LabelRecord>($"{BaseSelectSql} order by i.id;");
                 return rows.AsList();
             }
             catch (Exception ex)
@@ -107,14 +111,16 @@ namespace Busca_BT.Data
         public async Task<IEnumerable<ImportBatchRecord>> GetBatchesAsync(CancellationToken ct = default)
         {
             const string sql = """
-                select id            as "Id",
-                       arquivo       as "FileName",
-                       importado_em  as "ImportedAt",
-                       total         as "TotalRows",
-                       importados    as "ImportedRows",
-                       ignorados     as "SkippedRows"
-                from   plusbt.importacoes
-                order  by importado_em desc;
+                select m.id            as "Id",
+                       m.arquivo       as "FileName",
+                       m.importado_em  as "ImportedAt",
+                       m.total         as "TotalRows",
+                       m.importados    as "ImportedRows",
+                       m.ignorados     as "SkippedRows",
+                       o.nome          as "ImportadoPor"
+                from   plusbt.importacoes m
+                left   join plusbt.operadores o on o.id = m.importado_por
+                order  by m.importado_em desc;
                 """;
 
             try
@@ -141,14 +147,15 @@ namespace Busca_BT.Data
             const string sql = """
                 update plusbt.templates
                 set    arquivo = @FilePath,
-                       atualizado_em = now()
+                       atualizado_em = now(),
+                       atualizado_por = @OperadorId
                 where  id = @Id;
                 """;
 
             try
             {
                 await using var conn = await factory.OpenAsync();
-                var rows = await conn.ExecuteAsync(sql, new { FilePath = filePath, Id = id });
+                var rows = await conn.ExecuteAsync(sql, new { FilePath = filePath, Id = id, OperadorId = sessao.Atual?.Id });
 
                 if (rows > 0)
                     LogAssociateFileSuccess(logger, filePath, id);
@@ -169,6 +176,7 @@ namespace Busca_BT.Data
             const string sql = """
                 update plusbt.itens
                 set    aberta_em = now(),
+                       aberta_por = @OperadorId,
                        atualizado_em = now()
                 where  id = @Id and aberta_em is null;
                 """;
@@ -176,7 +184,7 @@ namespace Busca_BT.Data
             try
             {
                 await using var conn = await factory.OpenAsync(ct);
-                var rows = await conn.ExecuteAsync(sql, new { Id = id });
+                var rows = await conn.ExecuteAsync(sql, new { Id = id, OperadorId = sessao.Atual?.Id });
                 return rows > 0;
             }
             catch (Exception ex)
@@ -223,8 +231,8 @@ namespace Busca_BT.Data
             string fileName, int total, int skipped, IReadOnlyList<LabelRecord> records)
         {
             const string sqlBatch = """
-                insert into plusbt.importacoes (arquivo, total, importados, ignorados)
-                values (@Arquivo, @Total, @Importados, @Ignorados)
+                insert into plusbt.importacoes (arquivo, total, importados, ignorados, importado_por)
+                values (@Arquivo, @Total, @Importados, @Ignorados, @OperadorId)
                 returning id;
                 """;
 
@@ -247,7 +255,8 @@ namespace Busca_BT.Data
                     Arquivo = Path.GetFileName(fileName),
                     Total = total,
                     Importados = records.Count,
-                    Ignorados = skipped
+                    Ignorados = skipped,
+                    OperadorId = sessao.Atual?.Id
                 }, tx);
 
                 // Apaga a fila antiga (o histórico de importações é mantido).
@@ -302,11 +311,12 @@ namespace Busca_BT.Data
         public async Task<int> UpsertTemplatesAsync(IEnumerable<(string FileName, string FilePath)> templates)
         {
             const string sqlUpsert = """
-                insert into plusbt.templates (codigo, arquivo, atualizado_em)
-                values (@Codigo, @FilePath, now())
+                insert into plusbt.templates (codigo, arquivo, atualizado_em, atualizado_por)
+                values (@Codigo, @FilePath, now(), @OperadorId)
                 on conflict (codigo) do update
                     set arquivo = excluded.arquivo,
-                        atualizado_em = now();
+                        atualizado_em = now(),
+                        atualizado_por = excluded.atualizado_por;
                 """;
 
             try
@@ -314,7 +324,8 @@ namespace Busca_BT.Data
                 await using var conn = await factory.OpenAsync();
                 await using var tx = await conn.BeginTransactionAsync();
 
-                var lista = templates.Select(t => new { Codigo = t.FileName, t.FilePath }).ToList();
+                var operadorId = sessao.Atual?.Id;
+                var lista = templates.Select(t => new { Codigo = t.FileName, t.FilePath, OperadorId = operadorId }).ToList();
                 var count = await conn.ExecuteAsync(sqlUpsert, lista, tx);
 
                 await tx.CommitAsync();

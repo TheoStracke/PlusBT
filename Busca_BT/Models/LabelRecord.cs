@@ -53,11 +53,20 @@ namespace Busca_BT.Models
                 // Notifica a grid para o botão virar "Aberto" e a linha ser destacada na hora.
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AbertaEm)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FoiAberta)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AbertaTexto)));
             }
         }
         private DateTime? _abertaEm;
 
         public bool FoiAberta => AbertaEm.HasValue;
+
+        /// <summary>Nome do operador que abriu (null = antes dos operadores ou desconhecido).</summary>
+        public string? AbertaPor { get; set; }
+
+        /// <summary>Dica do botão "Aberto": quem abriu e quando.</summary>
+        public string AbertaTexto => AbertaEm is not DateTime em
+            ? "Ainda não aberto"
+            : $"Aberto{(AbertaPor is null ? "" : $" por {AbertaPor}")} em {Infrastructure.DateTimeExtensions.UtcToLocal(em):dd/MM HH:mm}";
 
         public event PropertyChangedEventHandler? PropertyChanged;
 

@@ -20,7 +20,12 @@ namespace Busca_BT.ViewModels
         private readonly IInvoiceReportService _reportService;
         private readonly ILabelRepository _labelRepository;
         private readonly IDialogService _dialog;
+        private readonly ISessaoOperador _sessao;
+        private readonly IEventoService _eventos;
         private readonly ILogger<HomeViewModel>? _logger;
+
+        /// <summary>Importar planilha e limpar a fila: só administrador.</summary>
+        public bool IsAdmin => _sessao.IsAdmin;
 
         // Tempo que o check verde fica na tela antes de abrir o modal de resumo.
         private const int SuccessAnimationMs = 1600;
@@ -157,16 +162,20 @@ namespace Busca_BT.ViewModels
             IInvoiceReportService reportService,
             ILabelRepository labelRepository,
             IDialogService dialog,
+            ISessaoOperador sessao,
+            IEventoService eventos,
             ILogger<HomeViewModel>? logger = null)
         {
             _excelImportService = excelImportService;
             _reportService = reportService;
             _labelRepository = labelRepository;
             _dialog = dialog;
+            _sessao = sessao;
+            _eventos = eventos;
             _logger = logger;
 
             LoadCommand = new RelayCommand(async () => await LoadAsync());
-            ImportCommand = new RelayCommand(async () => await ImportAsync(), () => !IsOverlayVisible);
+            ImportCommand = new RelayCommand(async () => await ImportAsync(), () => IsAdmin && !IsOverlayVisible);
             OpenCommand = new RelayCommand(async p => await OpenAsync(p));
             CloseSummaryCommand = new RelayCommand(() => IsSummaryOpen = false);
             OpenReportFolderCommand = new RelayCommand(OpenReportFolder);
@@ -175,7 +184,7 @@ namespace Busca_BT.ViewModels
             {
                 RaisePropertyChanged(nameof(ConfirmClearTexto));
                 IsConfirmClearOpen = true;
-            }, () => HasFila && !IsOverlayVisible);
+            }, () => IsAdmin && HasFila && !IsOverlayVisible);
             CancelClearQueueCommand = new RelayCommand(() => IsConfirmClearOpen = false, () => !IsClearing);
             ConfirmClearQueueCommand = new RelayCommand(async () => await ClearQueueAsync(), () => !IsClearing);
 
@@ -189,7 +198,8 @@ namespace Busca_BT.ViewModels
             IsClearing = true;
             try
             {
-                await _labelRepository.ClearQueueAsync();
+                var removidos = await _labelRepository.ClearQueueAsync();
+                await _eventos.RegistrarAsync(Acoes.LimpouFila, detalhes: new { itens = removidos });
                 SearchTerm = string.Empty;
                 await LoadAsync();
                 IsConfirmClearOpen = false;
@@ -341,6 +351,15 @@ namespace Busca_BT.ViewModels
                     // Pendências calculadas no carregamento (inclui o vínculo com os templates).
                     summary = ImportSummary.From(dialog.FileName, result, pasta, quantidade, erroRelatorio,
                         _allRecords.Where(l => l.TemPendencia).ToList());
+
+                    await _eventos.RegistrarAsync(Acoes.Importou, detalhes: new
+                    {
+                        arquivo = Path.GetFileName(dialog.FileName),
+                        importados = result.ImportedRows,
+                        ignorados = result.SkippedRows,
+                        comPendencia = summary.ComPendencia.Count,
+                        invoices = result.Imported.Select(l => l.Invoice).Distinct().ToList()
+                    });
                 }
                 else
                 {
@@ -450,6 +469,9 @@ namespace Busca_BT.ViewModels
 
             FecharCiencia();
 
+            await _eventos.RegistrarAsync(Acoes.Ciencia, label.Invoice, label.Codigo,
+                new { item = label.Item, lpn = label.Lpn, pendencias = label.Pendencias });
+
             try
             {
                 await AbrirArquivoAsync(label);
@@ -470,12 +492,16 @@ namespace Busca_BT.ViewModels
             });
             _logger?.LogInformation("[ABRIR] Arquivo aberto com sucesso");
 
+            await _eventos.RegistrarAsync(Acoes.Abriu, label.Invoice, label.Codigo,
+                new { item = label.Item, lpn = label.Lpn, lote = label.Lote, arquivo = label.LabelFilePath, comPendencia = label.TemPendencia });
+
             if (!label.FoiAberta)
             {
                 try
                 {
                     await _labelRepository.MarcarComoAbertaAsync(label.Id);
                     // Notifica a linha (botão "Aberto") e a barra de progresso da invoice.
+                    label.AbertaPor = _sessao.Atual?.Nome;
                     label.AbertaEm = DateTime.UtcNow;
                 }
                 catch (Exception ex)

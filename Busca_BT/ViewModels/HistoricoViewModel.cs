@@ -74,17 +74,26 @@ namespace Busca_BT.ViewModels
         private ImportBatchRecord[] _all = [];
         private readonly INavigationService _navigation;
         private readonly IDialogService _dialog;
+        private readonly ISessaoOperador _sessao;
+        private readonly Services.IEventoService _eventos;
 
-        public HistoricoViewModel(ILabelRepository repository, INavigationService navigation, IDialogService dialog)
+        /// <summary>Excluir importação: só administrador.</summary>
+        public bool IsAdmin => _sessao.IsAdmin;
+
+        public HistoricoViewModel(
+            ILabelRepository repository, INavigationService navigation, IDialogService dialog,
+            ISessaoOperador sessao, Services.IEventoService eventos)
         {
             _repository = repository;
             _navigation = navigation;
             _dialog = dialog;
+            _sessao = sessao;
+            _eventos = eventos;
 
             PreviousPageCommand = new RelayCommand(() => Page--, () => Page > 1);
             NextPageCommand = new RelayCommand(() => Page++, () => Page < TotalPages);
 
-            DeleteBatchCommand = new RelayCommand(async p => await DeleteBatchAsync(p), p => p is ImportBatchRecord);
+            DeleteBatchCommand = new RelayCommand(async p => await DeleteBatchAsync(p), p => IsAdmin && p is ImportBatchRecord);
             CloseCommand = new RelayCommand(() => _navigation.NavigateToNull());
         }
 
@@ -122,6 +131,12 @@ namespace Busca_BT.ViewModels
             if (!confirm) return;
 
             await _repository.DeleteBatchAsync(batch.Id);
+            await _eventos.RegistrarAsync(Services.Acoes.ExcluiuImportacao, detalhes: new
+            {
+                arquivo = batch.FileName,
+                importadoEm = batch.ImportedAt,
+                itens = batch.ImportedRows
+            });
             await LoadAllAsync();
 
             _dialog.ShowInfo("Exclusão", "Importação excluída com sucesso.");

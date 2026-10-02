@@ -31,6 +31,9 @@
                     <DataGridTextColumn Header="DATA"
                                         Binding="{Binding ImportedAtLocal, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}"
                                         Width="160"/>
+                    <DataGridTextColumn Header="POR"
+                                        Binding="{Binding ImportadoPor}"
+                                        Width="140"/>
                     <DataGridTextColumn Header="IMPORTADOS"
                                         Binding="{Binding ImportedRows}"
                                         Width="120"/>
@@ -42,6 +45,7 @@
                             <DataTemplate>
                                 <ui:Button Content="Excluir"
                                            Appearance="Danger"
+                                           Visibility="{Binding DataContext.IsAdmin, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibilityConverter}}"
                                            Padding="10,4"
                                            Command="{Binding DataContext.DeleteBatchCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                            CommandParameter="{Binding}"

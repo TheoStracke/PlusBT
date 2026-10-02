@@ -103,6 +103,7 @@ namespace Busca_BT
             nav.MapsTo<HomeViewModel, HomeView>();
             nav.MapsTo<HelpViewModel, HelpView>();
             nav.MapsTo<SettingsViewModel, SettingsView>();
+            nav.MapsTo<OperadoresViewModel, OperadoresView>();
 
             // Register converters in Application resources so XAML can reference by key
             Current.Resources["NullToVisibilityConverter"] = new NullToVisibilityConverter();
@@ -123,8 +124,8 @@ namespace Busca_BT
             {
                 nav.NavigateTo<SettingsViewModel>();
                 MessageBox.Show(
-                    "Não foi possível conectar ao banco de dados configurado.\n\n" +
-                    "Ajuste o servidor na aba Configurações e clique em Salvar.",
+                    "Não foi possível conectar ao banco de dados.\n\n" +
+                    "Confira a internet ou preencha a conexão com o Supabase na tela Configurações e clique em Salvar.",
                     "Conexão indisponível", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
@@ -172,6 +173,7 @@ namespace Busca_BT
                     services.AddTransient<HomeView>();
                     services.AddTransient<HelpView>();
                     services.AddTransient<SettingsView>();
+                    services.AddTransient<OperadoresView>();
 
                     // Register ViewModels
                     services.AddSingleton<MainViewModel>();
@@ -180,6 +182,8 @@ namespace Busca_BT
                     services.AddTransient<HomeViewModel>();
                     services.AddTransient<HelpViewModel>();
                     services.AddTransient<SettingsViewModel>();
+                    services.AddTransient<OperadoresViewModel>();
+                    services.AddSingleton<OperadorSelecaoViewModel>();
 
                     services.AddTransient<MainWindow>();
                 })
