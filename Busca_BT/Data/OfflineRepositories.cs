@@ -10,9 +10,10 @@ public sealed class SemConexaoException(string acao, Exception? inner = null)
     : Exception($"Sem conexão com a internet. {acao} precisa de internet — tente de novo quando a conexão voltar.", inner);
 
 /// <summary>
-/// Fila e templates para as telas: leitura sempre da cópia local (funciona offline);
-/// "abrir etiqueta" grava na cópia e entra na fila de envio; as ações de administrador
-/// (importar, limpar, templates…) vão direto ao Supabase e exigem internet.
+/// Fila para as telas: leitura sempre da cópia local (funciona offline); "abrir
+/// etiqueta" grava na cópia e entra na fila de envio; as ações de administrador
+/// (importar, limpar…) vão direto ao Supabase e exigem internet. Templates: ver
+/// TemplateArquivoService.
 /// </summary>
 public sealed class OfflineLabelRepository(
     LabelRepository remoto,
@@ -22,9 +23,6 @@ public sealed class OfflineLabelRepository(
 {
     public Task<IReadOnlyList<LabelRecord>> GetAllAsync()
         => Task.Run(cache.LerItens);
-
-    public async Task<IEnumerable<LabelRecord>> GetAllTemplatesMasterAsync()
-        => await Task.Run(cache.LerTemplates);
 
     public Task<bool> MarcarComoAbertaAsync(int id, CancellationToken ct = default)
     {
@@ -49,12 +47,6 @@ public sealed class OfflineLabelRepository(
 
     public Task<int> ClearQueueAsync()
         => Online("Limpar a fila", remoto.ClearQueueAsync);
-
-    public Task<int> UpsertTemplatesAsync(IEnumerable<(string FileName, string FilePath)> templates)
-        => Online("Cadastrar templates", () => remoto.UpsertTemplatesAsync(templates));
-
-    public Task<bool> AssociateLabelFileAsync(int id, string filePath)
-        => Online("Trocar o arquivo do template", () => remoto.AssociateLabelFileAsync(id, filePath));
 
     /// <summary>
     /// Executa no Supabase; depois atualiza a cópia local para a tela já mostrar o resultado.

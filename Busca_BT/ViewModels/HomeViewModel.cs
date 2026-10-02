@@ -23,6 +23,7 @@ namespace Busca_BT.ViewModels
         private readonly ISessaoOperador _sessao;
         private readonly IEventoService _eventos;
         private readonly ISyncService _sync;
+        private readonly ITemplateArquivos _templates;
         private readonly ILogger<HomeViewModel>? _logger;
 
         /// <summary>Importar planilha e limpar a fila: só administrador.</summary>
@@ -166,6 +167,7 @@ namespace Busca_BT.ViewModels
             ISessaoOperador sessao,
             IEventoService eventos,
             ISyncService sync,
+            ITemplateArquivos templates,
             ILogger<HomeViewModel>? logger = null)
         {
             _excelImportService = excelImportService;
@@ -175,6 +177,7 @@ namespace Busca_BT.ViewModels
             _sessao = sessao;
             _eventos = eventos;
             _sync = sync;
+            _templates = templates;
             _logger = logger;
 
             LoadCommand = new RelayCommand(async () => await LoadAsync());
@@ -257,17 +260,18 @@ namespace Busca_BT.ViewModels
 
             // Vínculo com os templates + pendências de cada rótulo. Se a leitura do acervo
             // falhar, a fila aparece mesmo assim (todos sinalizados como sem template).
-            IEnumerable<LabelRecord> templates;
+            IReadOnlyList<LabelRecord> templates;
             try
             {
-                templates = await _labelRepository.GetAllTemplatesMasterAsync();
+                // Modo Banco: cópia local do acervo; modo Pasta local: arquivos da pasta escolhida.
+                templates = await Task.Run(_templates.ObterParaVinculo);
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "[FILA] Falha ao ler os templates; a fila será exibida sem vínculo");
                 templates = [];
             }
-            await Task.Run(() => LabelDiagnostics.Aplicar(_allRecords, templates.ToList(), DateTime.Today));
+            await Task.Run(() => LabelDiagnostics.Aplicar(_allRecords, templates, DateTime.Today, _templates.MensagemArquivoAusente));
 
             if (!HasPendencias)
                 _somentePendencias = false;
@@ -503,6 +507,9 @@ namespace Busca_BT.ViewModels
 
         private async Task AbrirArquivoAsync(LabelRecord label)
         {
+            // Modo Banco: se houver internet e versão mais nova do template, baixa antes de abrir.
+            await _templates.GarantirAtualizadoAsync(label.LabelFilePath!);
+
             // Abre com o programa padrão do Windows (.btw → BarTender, .pdf → leitor de PDF).
             _logger?.LogInformation("[ABRIR] Abrindo arquivo com programa padrão: {Path}", label.LabelFilePath);
             Process.Start(new ProcessStartInfo(label.LabelFilePath!)

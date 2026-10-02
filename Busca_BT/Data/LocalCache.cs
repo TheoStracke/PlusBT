@@ -8,6 +8,12 @@ namespace Busca_BT.Data;
 public sealed record AcaoPendente(long Seq, string Tipo, string Payload, int Tentativas);
 
 /// <summary>
+/// Template baixado para a pasta local deste PC: qual versão/hash veio do banco e o
+/// tamanho/data do arquivo naquele momento (para perceber edição sem reler o arquivo).
+/// </summary>
+public sealed record ArquivoLocal(string Codigo, string NomeArquivo, int Versao, string Hash, long Tamanho, long ModificadoTicks);
+
+/// <summary>
 /// Cópia local (SQLite) da fila, dos templates e dos operadores, mais a fila de envio
 /// das ações feitas neste PC. As telas leem SEMPRE daqui, então funcionam sem
 /// internet; o SyncService mantém a cópia atualizada e envia as ações pendentes.
@@ -42,12 +48,29 @@ public sealed class LocalCache
         return conn;
     }
 
+    // Sobe quando o formato das tabelas de cópia muda: elas são recriadas (o Supabase
+    // repõe o conteúdo na próxima sincronização). A fila de envio nunca é apagada.
+    private const int VersaoEsquema = 2;
+
     private void CriarTabelas()
     {
         using var conn = Abrir();
-        Executar(conn, """
-            pragma journal_mode = wal;
+        Executar(conn, "pragma journal_mode = wal; create table if not exists meta (chave text primary key, valor text);");
 
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "select valor from meta where chave = 'esquema';";
+            var atual = cmd.ExecuteScalar() is string v && int.TryParse(v, out var n) ? n : 1;
+            if (atual != VersaoEsquema)
+            {
+                Executar(conn, """
+                    drop table if exists itens; drop table if exists templates; drop table if exists operadores;
+                    delete from meta where chave = 'ultima_sync';
+                    """);
+            }
+        }
+
+        Executar(conn, """
             create table if not exists itens (
                 id integer primary key, item integer, importacao_id integer, invoice text, codigo text,
                 descricao text, qtd integer, lote text, validade integer, validade_texto text,
@@ -55,7 +78,12 @@ public sealed class LocalCache
                 atualizado_em integer, aberta_em integer, aberta_por text
             );
             create table if not exists templates (
-                id integer primary key, codigo text, arquivo text, atualizado_em integer
+                id integer primary key, codigo text, nome_arquivo text, versao integer, hash text,
+                atualizado_em integer, atualizado_por text
+            );
+            create table if not exists arquivos_locais (
+                codigo text primary key, nome_arquivo text, versao integer, hash text,
+                tamanho integer, modificado integer
             );
             create table if not exists operadores (
                 id text primary key, nome text, pin_hash text, perfil text, ativo integer
@@ -64,8 +92,9 @@ public sealed class LocalCache
                 seq integer primary key autoincrement, tipo text not null, payload text not null,
                 criado_em integer not null, tentativas integer not null default 0, ultimo_erro text
             );
-            create table if not exists meta (chave text primary key, valor text);
             """);
+
+        Executar(conn, $"insert into meta values ('esquema', '{VersaoEsquema}') on conflict (chave) do update set valor = excluded.valor;");
     }
 
     // ── Leitura ──────────────────────────────────────────────────────────────
@@ -109,25 +138,60 @@ public sealed class LocalCache
         return lista;
     }
 
-    public IReadOnlyList<LabelRecord> LerTemplates()
+    public IReadOnlyList<TemplateInfo> LerTemplates()
     {
         using var conn = Abrir();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "select id, codigo, arquivo, atualizado_em from templates order by codigo;";
+        cmd.CommandText = "select id, codigo, nome_arquivo, versao, hash, atualizado_em, atualizado_por from templates order by codigo;";
 
-        var lista = new List<LabelRecord>();
+        var lista = new List<TemplateInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            lista.Add(new LabelRecord
+            lista.Add(new TemplateInfo
             {
                 Id = r.GetInt32(0),
                 Codigo = Texto(r, 1),
-                LabelFilePath = TextoOuNull(r, 2),
-                UpdatedAt = Data(r, 3, DateTimeKind.Utc)
+                NomeArquivo = TextoOuNull(r, 2),
+                VersaoAtual = r.IsDBNull(3) ? 0 : r.GetInt32(3),
+                HashAtual = TextoOuNull(r, 4),
+                AtualizadoEm = Data(r, 5, DateTimeKind.Utc),
+                AtualizadoPor = TextoOuNull(r, 6)
             });
         }
         return lista;
+    }
+
+    // ── Manifesto dos arquivos baixados para a pasta local ──────────────────
+
+    public Dictionary<string, ArquivoLocal> LerArquivosLocais()
+    {
+        using var conn = Abrir();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "select codigo, nome_arquivo, versao, hash, tamanho, modificado from arquivos_locais;";
+
+        var mapa = new Dictionary<string, ArquivoLocal>(StringComparer.Ordinal);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var a = new ArquivoLocal(r.GetString(0), Texto(r, 1), r.GetInt32(2), Texto(r, 3), r.GetInt64(4), r.GetInt64(5));
+            mapa[a.Codigo] = a;
+        }
+        return mapa;
+    }
+
+    public void SalvarArquivoLocal(ArquivoLocal a)
+    {
+        using var conn = Abrir();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            insert into arquivos_locais values ($codigo, $nome, $versao, $hash, $tamanho, $mod)
+            on conflict (codigo) do update set nome_arquivo = $nome, versao = $versao, hash = $hash,
+                tamanho = $tamanho, modificado = $mod;
+            """;
+        Param(cmd, "$codigo", a.Codigo); Param(cmd, "$nome", a.NomeArquivo); Param(cmd, "$versao", a.Versao);
+        Param(cmd, "$hash", a.Hash); Param(cmd, "$tamanho", a.Tamanho); Param(cmd, "$mod", a.ModificadoTicks);
+        cmd.ExecuteNonQuery();
     }
 
     public IReadOnlyList<Operador> LerOperadores(bool somenteAtivos)
@@ -165,7 +229,7 @@ public sealed class LocalCache
 
     /// <summary>Substitui a cópia local inteira pelo que veio do Supabase (numa transação).</summary>
     public void SubstituirTudo(
-        IReadOnlyList<LabelRecord> itens, IReadOnlyList<LabelRecord> templates, IReadOnlyList<Operador> operadores)
+        IReadOnlyList<LabelRecord> itens, IReadOnlyList<TemplateInfo> templates, IReadOnlyList<Operador> operadores)
     {
         using var conn = Abrir();
         using var tx = conn.BeginTransaction();
@@ -196,12 +260,13 @@ public sealed class LocalCache
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "insert into templates values ($id, $codigo, $arquivo, $atualizado_em);";
+            cmd.CommandText = "insert into templates values ($id, $codigo, $nome, $versao, $hash, $atualizado_em, $atualizado_por);";
             foreach (var t in templates)
             {
                 cmd.Parameters.Clear();
-                Param(cmd, "$id", t.Id); Param(cmd, "$codigo", t.Codigo);
-                Param(cmd, "$arquivo", t.LabelFilePath); Param(cmd, "$atualizado_em", Ticks(t.UpdatedAt));
+                Param(cmd, "$id", t.Id); Param(cmd, "$codigo", t.Codigo); Param(cmd, "$nome", t.NomeArquivo);
+                Param(cmd, "$versao", t.VersaoAtual); Param(cmd, "$hash", t.HashAtual);
+                Param(cmd, "$atualizado_em", Ticks(t.AtualizadoEm)); Param(cmd, "$atualizado_por", t.AtualizadoPor);
                 cmd.ExecuteNonQuery();
             }
         }

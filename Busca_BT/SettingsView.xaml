@@ -13,7 +13,9 @@
                    FontSize="24" FontWeight="SemiBold"
                    Margin="0,0,0,8"/>
 
-        <ui:Card Grid.Row="1" MaxWidth="520" HorizontalAlignment="Left" Padding="24" VerticalAlignment="Top">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+        <ui:Card MaxWidth="520" HorizontalAlignment="Left" Padding="24" VerticalAlignment="Top">
             <StackPanel>
                 <TextBlock Text="Banco de dados na nuvem (Supabase). Os dados ficam no painel do Supabase em Project Settings → Database → Session pooler. A senha é guardada criptografada neste computador."
                            FontSize="12" Opacity="0.65" TextWrapping="Wrap" Margin="0,0,0,20"/>
@@ -63,5 +65,40 @@
                            Margin="0,16,0,0"/>
             </StackPanel>
         </ui:Card>
+
+        <!-- Templates neste PC -->
+        <ui:Card MaxWidth="520" HorizontalAlignment="Left" Padding="24" Margin="0,16,0,0" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="Templates neste PC" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <TextBlock Text="De onde este computador abre os arquivos .btw das etiquetas."
+                           FontSize="12" Opacity="0.65" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+                <RadioButton GroupName="ModoTemplates" IsChecked="{Binding ModoBanco}" Margin="0,0,0,4">
+                    <TextBlock TextWrapping="Wrap">
+                        <Run Text="Banco de dados (recomendado)" FontWeight="SemiBold"/><LineBreak/>
+                        <Run Text="O acervo vem do Supabase e fica copiado neste PC; abre mesmo sem internet." FontSize="12"/>
+                    </TextBlock>
+                </RadioButton>
+                <RadioButton GroupName="ModoTemplates" IsChecked="{Binding ModoPasta}" Margin="0,8,0,8">
+                    <TextBlock TextWrapping="Wrap">
+                        <Run Text="Pasta local" FontWeight="SemiBold"/><LineBreak/>
+                        <Run Text="Abre direto de uma pasta (deste PC ou da rede). Use como contingência." FontSize="12"/>
+                    </TextBlock>
+                </RadioButton>
+
+                <DockPanel Margin="28,0,0,16" IsEnabled="{Binding ModoPasta}">
+                    <ui:Button DockPanel.Dock="Right" Content="Escolher…" Appearance="Secondary" Margin="8,0,0,0"
+                               Command="{Binding EscolherPastaCommand}"/>
+                    <ui:TextBox Text="{Binding PastaTemplates, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="Ex.: \\Serveradeprint\arquivos\Etiquetas_PlusBT"/>
+                </DockPanel>
+
+                <ui:Button Content="Aplicar" Icon="{ui:SymbolIcon Checkmark20}" Appearance="Primary"
+                           HorizontalAlignment="Left" Command="{Binding AplicarModoCommand}"/>
+                <TextBlock Text="{Binding StatusModo}" FontSize="13" TextWrapping="Wrap" Margin="0,12,0,0"/>
+            </StackPanel>
+        </ui:Card>
+        </StackPanel>
+        </ScrollViewer>
     </Grid>
 </UserControl>

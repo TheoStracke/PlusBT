@@ -15,8 +15,6 @@ namespace Busca_BT.Data
     public interface ILabelRepository
     {
         Task<IReadOnlyList<LabelRecord>> GetAllAsync();
-        Task<IEnumerable<LabelRecord>> GetAllTemplatesMasterAsync(); // Busca apenas o Acervo
-        Task<bool> AssociateLabelFileAsync(int id, string filePath);
         Task<bool> MarcarComoAbertaAsync(int id, CancellationToken ct = default);
         Task<IEnumerable<ImportBatchRecord>> GetBatchesAsync(CancellationToken ct = default);
         Task DeleteBatchAsync(int batchId, CancellationToken ct = default);
@@ -28,7 +26,6 @@ namespace Busca_BT.Data
         Task<int> ReplaceQueueAsync(string fileName, int total, int skipped, IReadOnlyList<LabelRecord> records);
 
         Task<int> ClearQueueAsync(); // Apaga a fila atual (o histórico de importações é mantido)
-        Task<int> UpsertTemplatesAsync(IEnumerable<(string FileName, string FilePath)> templates);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -83,31 +80,6 @@ namespace Busca_BT.Data
             }
         }
 
-        // Traz apenas os templates cadastrados no acervo (para a tela Templates e o vínculo da fila)
-        public async Task<IEnumerable<LabelRecord>> GetAllTemplatesMasterAsync()
-        {
-            const string sql = """
-                select id             as "Id",
-                       codigo         as "Codigo",
-                       ''             as "DescricaoAnvisa",
-                       arquivo        as "LabelFilePath",
-                       atualizado_em  as "UpdatedAt"
-                from   plusbt.templates
-                order  by codigo;
-                """;
-
-            try
-            {
-                await using var conn = await factory.OpenAsync();
-                return await conn.QueryAsync<LabelRecord>(sql);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Erro ao buscar Master Templates");
-                throw;
-            }
-        }
-
         public async Task<IEnumerable<ImportBatchRecord>> GetBatchesAsync(CancellationToken ct = default)
         {
             const string sql = """
@@ -136,40 +108,6 @@ namespace Busca_BT.Data
         }
 
         // ── WRITE ────────────────────────────────────────────────────────────
-
-        public async Task<bool> AssociateLabelFileAsync(int id, string filePath)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-
-            if (!File.Exists(filePath))
-                throw new FileNotFoundException($"Arquivo não encontrado: {filePath}", filePath);
-
-            const string sql = """
-                update plusbt.templates
-                set    arquivo = @FilePath,
-                       atualizado_em = now(),
-                       atualizado_por = @OperadorId
-                where  id = @Id;
-                """;
-
-            try
-            {
-                await using var conn = await factory.OpenAsync();
-                var rows = await conn.ExecuteAsync(sql, new { FilePath = filePath, Id = id, OperadorId = sessao.Atual?.Id });
-
-                if (rows > 0)
-                    LogAssociateFileSuccess(logger, filePath, id);
-                else
-                    LogAssociateFileNotFound(logger, id);
-
-                return rows > 0;
-            }
-            catch (Exception ex)
-            {
-                LogAssociateFileError(logger, id, ex);
-                throw;
-            }
-        }
 
         public async Task<bool> MarcarComoAbertaAsync(int id, CancellationToken ct = default)
         {
@@ -308,36 +246,6 @@ namespace Busca_BT.Data
                 await writer.WriteAsync(value, NpgsqlDbType.Text);
         }
 
-        public async Task<int> UpsertTemplatesAsync(IEnumerable<(string FileName, string FilePath)> templates)
-        {
-            const string sqlUpsert = """
-                insert into plusbt.templates (codigo, arquivo, atualizado_em, atualizado_por)
-                values (@Codigo, @FilePath, now(), @OperadorId)
-                on conflict (codigo) do update
-                    set arquivo = excluded.arquivo,
-                        atualizado_em = now(),
-                        atualizado_por = excluded.atualizado_por;
-                """;
-
-            try
-            {
-                await using var conn = await factory.OpenAsync();
-                await using var tx = await conn.BeginTransactionAsync();
-
-                var operadorId = sessao.Atual?.Id;
-                var lista = templates.Select(t => new { Codigo = t.FileName, t.FilePath, OperadorId = operadorId }).ToList();
-                var count = await conn.ExecuteAsync(sqlUpsert, lista, tx);
-
-                await tx.CommitAsync();
-                return count;
-            }
-            catch (Exception ex)
-            {
-                LogInsertBatchError(logger, 0, ex);
-                throw;
-            }
-        }
-
         // ── LoggerMessage source generators (CA1848) ─────────────────────────
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao buscar etiquetas")]
@@ -348,15 +256,6 @@ namespace Busca_BT.Data
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao inserir lote de etiquetas (BatchId={BatchId})")]
         private static partial void LogInsertBatchError(ILogger logger, int batchId, Exception ex);
-
-        [LoggerMessage(Level = LogLevel.Information, Message = "Arquivo '{FilePath}' associado à etiqueta Id={Id}")]
-        private static partial void LogAssociateFileSuccess(ILogger logger, string filePath, int id);
-
-        [LoggerMessage(Level = LogLevel.Warning, Message = "AssociateLabelFile: Id={Id} não encontrado")]
-        private static partial void LogAssociateFileNotFound(ILogger logger, int id);
-
-        [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao associar arquivo à etiqueta Id={Id}")]
-        private static partial void LogAssociateFileError(ILogger logger, int id, Exception ex);
 
         [LoggerMessage(Level = LogLevel.Error, Message = "Erro ao marcar etiqueta Id={Id} como aberta")]
         private static partial void LogMarcarAbertaError(ILogger logger, int id, Exception ex);

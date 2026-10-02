@@ -6,179 +6,177 @@
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>  <!-- Header -->
-            <RowDefinition Height="Auto"/>  <!-- Barra de busca -->
-            <RowDefinition Height="*"/>     <!-- Grid de templates -->
-            <RowDefinition Height="Auto"/>  <!-- Footer / ações -->
+            <RowDefinition Height="Auto"/>  <!-- Aviso modo pasta -->
+            <RowDefinition Height="Auto"/>  <!-- Busca -->
+            <RowDefinition Height="*"/>     <!-- Lista + detalhe -->
+            <RowDefinition Height="Auto"/>  <!-- Status -->
         </Grid.RowDefinitions>
 
-        <!-- ── HEADER ────────────────────────────────────────────────────── -->
+        <!-- ── HEADER ───────────────────────────────────────────────────── -->
         <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,16">
-            <TextBlock DockPanel.Dock="Left"
-                       Text="Gerenciamento de Etiquetas"
-                       FontSize="24" FontWeight="SemiBold"
-                       VerticalAlignment="Center"/>
+            <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+                <TextBlock Text="Acervo de templates" FontSize="24" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding Resumo}" FontSize="12" Opacity="0.65" Margin="0,2,0,0"/>
+            </StackPanel>
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <ui:Button Content="Sincronizar pasta"
-                           ToolTip="Copia os .btw para a pasta centralizada e atualiza o banco"
-                           Icon="{ui:SymbolIcon ArrowSync24}"
-                           Appearance="Primary"
-                           Margin="0,0,8,0"
-                           Command="{Binding SyncNewFolderCommand}"/>
+                <ui:Button Content="Adicionar arquivos"
+                           ToolTip="Envia um ou mais .btw ao acervo. Código novo vira template novo; código existente vira nova versão."
+                           Icon="{ui:SymbolIcon DocumentArrowUp20}" Appearance="Primary" Margin="0,0,8,0"
+                           Command="{Binding AdicionarArquivosCommand}"/>
                 <ui:Button Content="Importar pasta"
-                           ToolTip="Associa os .btw de uma pasta sem copiar os arquivos"
-                           Icon="{ui:SymbolIcon FolderArrowUp24}"
-                           Appearance="Secondary"
-                           Margin="0,0,8,0"
-                           Command="{Binding ImportFolderCommand}"/>
-                <ui:Button Content="Importar arquivo"
-                           Icon="{ui:SymbolIcon DocumentArrowUp20}"
-                           Appearance="Secondary"
-                           Margin="0,0,8,0"
-                           Command="{Binding AddSingleTemplateCommand}"/>
-                <ui:Button Content="Fechar"
-                           Appearance="Transparent"
-                           Command="{Binding CloseCommand}"/>
+                           ToolTip="Envia todos os .btw de uma pasta (e subpastas). Arquivos iguais aos do acervo são ignorados."
+                           Icon="{ui:SymbolIcon FolderArrowUp24}" Appearance="Secondary" Margin="0,0,8,0"
+                           Command="{Binding ImportarPastaCommand}"/>
+                <ui:Button Content="Exportar acervo"
+                           ToolTip="Copia a versão atual de todos os templates para uma pasta (backup ou modo Pasta local)."
+                           Icon="{ui:SymbolIcon FolderArrowRight24}" Appearance="Secondary" Margin="0,0,8,0"
+                           Command="{Binding ExportarCommand}"/>
+                <ui:Button ToolTip="Sincronizar agora" Icon="{ui:SymbolIcon ArrowSync20}" Appearance="Transparent"
+                           Command="{Binding SincronizarCommand}"/>
             </StackPanel>
         </DockPanel>
 
-        <!-- ── BARRA DE BUSCA ─────────────────────────────────────────────── -->
-        <Grid Grid.Row="1" Margin="0,0,0,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <ui:TextBox Grid.Column="0" MaxWidth="480" HorizontalAlignment="Left"
-                        PlaceholderText="Buscar por código, descrição ou arquivo…"
-                        Icon="{ui:SymbolIcon Search24}"
-                        Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"/>
-
-            <TextBlock Grid.Column="1"
-                       VerticalAlignment="Center"
-                       Margin="16,0,0,0"
-                       FontSize="12"
-                       Opacity="0.65">
-                <Run Text="{Binding Templates.Count, Mode=OneWay}"/>
-                <Run Text=" resultado(s)"/>
-            </TextBlock>
-        </Grid>
-
-        <!-- ── GRID DE TEMPLATES ──────────────────────────────────────────── -->
-        <Border Grid.Row="2" CornerRadius="8" BorderThickness="1"
-                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
-            <ui:DataGrid x:Name="GridTemplates"
-                         ItemsSource="{Binding Templates}"
-                         SelectedItem="{Binding Selected, Mode=TwoWay}"
-                         AutoGenerateColumns="False"
-                         CanUserAddRows="False"
-                         IsReadOnly="True"
-                         SelectionMode="Single"
-                         GridLinesVisibility="Horizontal"
-                         MouseDoubleClick="GridTemplates_MouseDoubleClick">
-
-                <DataGrid.Columns>
-
-                    <!-- 1. CÓDIGO -->
-                    <DataGridTemplateColumn Header="CÓDIGO" Width="150">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Codigo}" VerticalAlignment="Center" Margin="12,0"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                    <!-- 2. DESCRIÇÃO -->
-                    <DataGridTemplateColumn Header="DESCRIÇÃO" Width="*">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding DescricaoAnvisa}" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                    <!-- 3. ARQUIVO .BTW -->
-                    <DataGridTemplateColumn Header="ARQUIVO .BTW" Width="220">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding NomeArquivo}" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                    <!-- 4. ÚLTIMA ATUALIZAÇÃO -->
-                    <DataGridTemplateColumn Header="ÚLTIMA ATUALIZAÇÃO" Width="160">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding UpdatedAtFormatado}" VerticalAlignment="Center" Margin="12,0"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                    <!-- 5. STATUS COLORIDO -->
-                    <DataGridTemplateColumn Header="STATUS" Width="120">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding StatusTexto}"
-                                           Foreground="{Binding StatusCor}"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" Margin="12,0"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                    <!-- 6. BOTÃO DE AÇÃO RÁPIDA -->
-                    <DataGridTemplateColumn Header="" Width="90">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <ui:Button Content="Abrir"
-                                           Visibility="{Binding TemArquivo, Converter={StaticResource BoolToVisibilityConverter}}"
-                                           Appearance="Secondary"
-                                           Padding="10,4"
-                                           Tag="{Binding}"
-                                           Click="BtnAbrirRow_Click"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                </DataGrid.Columns>
-            </ui:DataGrid>
+        <!-- ── AVISO: PC no modo Pasta local ───────────────────────────── -->
+        <Border Grid.Row="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,12"
+                Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                Visibility="{Binding ModoPastaLocal, Converter={StaticResource BoolToVisibilityConverter}}">
+            <DockPanel>
+                <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Warning20" Filled="True" Margin="0,0,10,0"
+                               Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                <TextBlock Text="{Binding AvisoModoPasta}" TextWrapping="Wrap" FontSize="12"/>
+            </DockPanel>
         </Border>
 
-        <!-- ── FOOTER ─────────────────────────────────────────────────────── -->
-        <Grid Grid.Row="3" Margin="0,16,0,0">
+        <!-- ── BUSCA ───────────────────────────────────────────────────── -->
+        <DockPanel Grid.Row="2" Margin="0,0,0,12" LastChildFill="False">
+            <ui:TextBox DockPanel.Dock="Left" Width="380"
+                        PlaceholderText="Buscar por código ou nome do arquivo…"
+                        Icon="{ui:SymbolIcon Search24}"
+                        Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"/>
+            <CheckBox DockPanel.Dock="Left" Margin="16,0,0,0" VerticalAlignment="Center"
+                      Content="Só alterados neste PC" IsChecked="{Binding SomenteAlterados}"/>
+            <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" FontSize="11" Opacity="0.6"
+                       ToolTip="Cópia local do acervo neste PC: as etiquetas abrem daqui">
+                <Run Text="Pasta local: "/><Run Text="{Binding PastaLocal, Mode=OneWay}"/>
+            </TextBlock>
+        </DockPanel>
+
+        <!-- ── LISTA + DETALHE ─────────────────────────────────────────── -->
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="380"/>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                <TextBlock Text="STATUS" FontSize="10" FontWeight="SemiBold" Opacity="0.6" Margin="0,0,0,3"/>
-                <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap" MaxWidth="500"/>
-            </StackPanel>
+            <Border Grid.Column="0" CornerRadius="8" BorderThickness="1"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+                <ui:DataGrid x:Name="GridTemplates"
+                             ItemsSource="{Binding Templates}"
+                             SelectedItem="{Binding Selected, Mode=TwoWay}"
+                             AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                             SelectionMode="Single" GridLinesVisibility="Horizontal"
+                             EnableRowVirtualization="True"
+                             MouseDoubleClick="GridTemplates_MouseDoubleClick">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="CÓDIGO" Binding="{Binding Codigo}" Width="140"/>
+                        <DataGridTextColumn Header="ARQUIVO" Binding="{Binding NomeArquivo}" Width="*"/>
+                        <DataGridTextColumn Header="VERSÃO" Binding="{Binding VersaoTexto}" Width="80"/>
+                        <DataGridTextColumn Header="ATUALIZADO" Binding="{Binding AtualizadoTexto}" Width="190"/>
+                        <DataGridTemplateColumn Header="NESTE PC" Width="190">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding StatusTexto}" Foreground="{Binding StatusCor}"
+                                               FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </ui:DataGrid>
+            </Border>
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <ui:Button Content="Salvar / substituir arquivo"
-                           ToolTip="Escolhe um novo .btw e substitui o arquivo associado ao item selecionado"
-                           Icon="{ui:SymbolIcon Save24}"
-                           Appearance="Secondary"
-                           Margin="0,0,8,0"
-                           Command="{Binding SaveLabelCommand}"/>
-                <ui:Button Content="Abrir etiqueta"
-                           ToolTip="Abre o .btw no BarTender para edição (duplo clique na linha também funciona)"
-                           Icon="{ui:SymbolIcon Open24}"
-                           Appearance="Primary"
-                           Command="{Binding OpenLabelCommand}"/>
-            </StackPanel>
+            <!-- Detalhe do selecionado -->
+            <ui:Card Grid.Column="2" Padding="20" VerticalAlignment="Stretch" VerticalContentAlignment="Top">
+                <Grid>
+                    <!-- Nada selecionado -->
+                    <TextBlock Text="Selecione um template para ver as ações e as versões guardadas."
+                               TextWrapping="Wrap" Opacity="0.65" FontSize="13">
+                        <TextBlock.Style>
+                            <Style TargetType="{x:Type TextBlock}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Selected}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <DockPanel Visibility="{Binding Selected, Converter={StaticResource NullToVisibilityConverter}}">
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Text="{Binding Selected.Codigo}" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock FontSize="12" Opacity="0.65" Margin="0,2,0,12">
+                                <Run Text="{Binding Selected.VersaoTexto, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding Selected.StatusTexto, Mode=OneWay}"/>
+                            </TextBlock>
+
+                            <ui:Button Content="Abrir no BarTender" Icon="{ui:SymbolIcon Open20}" Appearance="Secondary"
+                                       HorizontalAlignment="Stretch" Margin="0,0,0,8" Command="{Binding AbrirCommand}"/>
+                            <ui:Button Content="Enviar alteração" Icon="{ui:SymbolIcon CloudArrowUp20}" Appearance="Primary"
+                                       HorizontalAlignment="Stretch" Margin="0,0,0,8" Command="{Binding EnviarAlteracaoCommand}"
+                                       ToolTip="Envia o arquivo editado neste PC como nova versão do acervo"/>
+                            <ui:Button Content="Enviar outro arquivo como nova versão…" Icon="{ui:SymbolIcon DocumentArrowUp20}"
+                                       Appearance="Secondary" HorizontalAlignment="Stretch" Margin="0,0,0,16"
+                                       Command="{Binding EnviarNovaVersaoCommand}"/>
+
+                            <TextBlock Text="VERSÕES GUARDADAS" FontSize="11" FontWeight="SemiBold" Opacity="0.6" Margin="0,0,0,6"/>
+                            <TextBlock Text="A atual e as 3 anteriores ficam guardadas. Restaurar cria uma versão nova."
+                                       FontSize="11" Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding VersoesMensagem}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                        </StackPanel>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Versoes}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,0,0,1" Padding="0,8"
+                                                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                                            <DockPanel>
+                                                <ui:Button DockPanel.Dock="Right" Content="Restaurar" Appearance="Transparent"
+                                                           Padding="8,4" VerticalAlignment="Center"
+                                                           Command="{Binding DataContext.RestaurarCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                           CommandParameter="{Binding}"/>
+                                                <StackPanel>
+                                                    <TextBlock FontWeight="SemiBold" FontSize="13">
+                                                        <Run Text="v"/><Run Text="{Binding Versao, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding Resumo}" FontSize="11" Opacity="0.7" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Grid>
+            </ui:Card>
         </Grid>
 
-        <!-- Overlay de carregamento -->
-        <Grid Grid.RowSpan="4"
-              Background="#80000000"
+        <!-- ── STATUS ──────────────────────────────────────────────────── -->
+        <StackPanel Grid.Row="4" Margin="0,12,0,0">
+            <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Overlay de trabalho -->
+        <Grid Grid.RowSpan="5" Background="#80000000"
               Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                 <ui:ProgressRing IsIndeterminate="True" Width="48" Height="48" Margin="0,0,0,12"/>
-                <TextBlock Text="Aguarde…" Foreground="White" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <TextBlock Text="{Binding StatusText}" Foreground="White" FontSize="16" FontWeight="SemiBold"
+                           HorizontalAlignment="Center"/>
             </StackPanel>
         </Grid>
     </Grid>

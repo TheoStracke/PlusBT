@@ -20,7 +20,67 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly DatabaseOptions _dbOptions;
     private readonly DatabaseInitializer _initializer;
     private readonly Services.ISyncService _sync;
+    private readonly IPreferenciasStore _preferencias;
     private readonly ILogger<SettingsViewModel> _logger;
+
+    // ── Templates neste PC (Banco ou Pasta local) ─────────────────────────
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModoPasta))]
+    private bool _modoBanco = true;
+
+    public bool ModoPasta
+    {
+        get => !ModoBanco;
+        set => ModoBanco = !value;
+    }
+
+    [ObservableProperty]
+    private string _pastaTemplates = string.Empty;
+
+    [ObservableProperty]
+    private string _statusModo = string.Empty;
+
+    [RelayCommand]
+    private void EscolherPasta()
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Pasta com os templates .btw" };
+        if (dlg.ShowDialog() == true)
+            PastaTemplates = dlg.FolderName;
+    }
+
+    [RelayCommand]
+    private async Task AplicarModoAsync()
+    {
+        if (ModoPasta)
+        {
+            if (string.IsNullOrWhiteSpace(PastaTemplates) || !System.IO.Directory.Exists(PastaTemplates))
+            {
+                StatusModo = "Escolha uma pasta que exista neste PC ou na rede.";
+                return;
+            }
+        }
+
+        _preferencias.Salvar(new PreferenciasPc
+        {
+            ModoTemplates = ModoBanco ? ModoTemplates.Banco : ModoTemplates.PastaLocal,
+            PastaTemplates = PastaTemplates.Trim()
+        });
+
+        if (ModoBanco)
+        {
+            StatusModo = "Modo Banco de dados ativado. Baixando o acervo para este PC…";
+            var ok = await _sync.SincronizarAgoraAsync();
+            StatusModo = ok
+                ? "Modo Banco de dados ativado e acervo atualizado neste PC."
+                : "Modo Banco de dados ativado. Sem internet agora: o acervo será baixado quando a conexão voltar.";
+        }
+        else
+        {
+            var qtd = System.IO.Directory.EnumerateFiles(PastaTemplates, "*.btw", System.IO.SearchOption.AllDirectories).Count();
+            StatusModo = $"Modo Pasta local ativado: {qtd} arquivo(s) .btw encontrados.";
+        }
+    }
 
     [ObservableProperty]
     private string _host = string.Empty;
@@ -48,8 +108,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         DatabaseOptions dbOptions,
         DatabaseInitializer initializer,
         Services.ISyncService sync,
+        IPreferenciasStore preferencias,
         ILogger<SettingsViewModel> logger)
     {
+        _preferencias = preferencias;
+        ModoBanco = preferencias.Atual.ModoTemplates == ModoTemplates.Banco;
+        PastaTemplates = preferencias.Atual.PastaTemplates;
+
         _store = store;
         _dbOptions = dbOptions;
         _initializer = initializer;

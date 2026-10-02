@@ -1,435 +1,411 @@
 using Busca_BT.Data;
 using Busca_BT.Infrastructure;
 using Busca_BT.Models;
+using Busca_BT.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows;
 
 namespace Busca_BT.ViewModels;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Item de apresentação na grid
+// Linha da grid
 // ─────────────────────────────────────────────────────────────────────────────
 
-public sealed class TemplateItem
+public sealed class TemplateItem(TemplateLocal local)
 {
-    public int Id { get; init; }
-    public string Codigo { get; init; } = string.Empty;
-    public string DescricaoAnvisa { get; init; } = string.Empty;
-    public string? LabelFilePath { get; init; }
-    public DateTime? UpdatedAt { get; init; }
+    public TemplateLocal Local { get; } = local;
+    public string Codigo => Local.Info.Codigo;
+    public string NomeArquivo => Local.Info.NomeArquivo ?? "—";
+    public StatusArquivo Status => Local.Status;
 
-    // ── Propriedades calculadas para a View ───────────────────────────────
-    public string NomeArquivo => Path.GetFileName(LabelFilePath ?? string.Empty);
-    public string UpdatedAtFormatado => UpdatedAt?.UtcToLocal().ToString("dd/MM/yyyy HH:mm") ?? "—";
-    public bool TemArquivo => File.Exists(LabelFilePath);
+    public string VersaoTexto => Local.Info.VersaoAtual > 0 ? $"v{Local.Info.VersaoAtual}" : "—";
 
-    public string StatusTexto => TemArquivo ? "Associada" : "Sem arquivo";
-    public string StatusCor => TemArquivo ? "#16A34A" : "#DC2626";
+    public string AtualizadoTexto =>
+        (Local.Info.AtualizadoEm?.UtcToLocal().ToString("dd/MM/yyyy HH:mm") ?? "—") +
+        (Local.Info.AtualizadoPor is { } por ? $" · {por}" : "");
+
+    public bool PodeAbrir => Local.CaminhoLocal is { } c && File.Exists(c);
+    public bool TemAlteracaoLocal => Status is StatusArquivo.AlteradoAqui or StatusArquivo.Conflito;
+
+    public string StatusTexto => Status switch
+    {
+        StatusArquivo.Sincronizado => "Sincronizado",
+        StatusArquivo.Desatualizado => "Versão nova a baixar",
+        StatusArquivo.NaoBaixado => "Não baixado",
+        StatusArquivo.AlteradoAqui => "Alterado neste PC",
+        StatusArquivo.Conflito => "Alterado aqui e no banco",
+        _ => "Sem arquivo no banco"
+    };
+
+    public string StatusCor => Status switch
+    {
+        StatusArquivo.Sincronizado => "#16A34A",
+        StatusArquivo.AlteradoAqui => "#D97706",
+        StatusArquivo.Conflito => "#DC2626",
+        _ => "#6B7280"
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ViewModel
 // ─────────────────────────────────────────────────────────────────────────────
 
-public sealed partial class TemplateUpdateViewModel : ObservableObject
+/// <summary>
+/// Acervo de templates (só administrador): adicionar arquivos/pasta, enviar alteração
+/// feita no BarTender, versões guardadas e restaurar, exportar o acervo.
+/// </summary>
+public sealed partial class TemplateUpdateViewModel(
+    ITemplateArquivos arquivos,
+    ISyncService sync,
+    IEventoService eventos,
+    IDialogService dialog,
+    IPreferenciasStore preferencias,
+    ILogger<TemplateUpdateViewModel> logger) : ObservableObject
 {
-    // ── Dependências ──────────────────────────────────────────────────────
-    private readonly ILabelRepository _repo;
-    private readonly ILogger<TemplateUpdateViewModel> _logger;
-    private readonly Services.IEventoService _eventos;
-
-    // Pasta base onde os templates ficam armazenados no computador.
-    private readonly string _templateBaseDir =
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "BuscaBT", "Templates");
-
-    // ── Estado interno ────────────────────────────────────────────────────
-    private List<TemplateItem> _allItems = [];
-
-    // ── Propriedades observáveis ──────────────────────────────────────────
+    private List<TemplateItem> _todos = [];
 
     [ObservableProperty]
     private ObservableCollection<TemplateItem> _templates = [];
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenLabelCommand))]
-    [NotifyCanExecuteChangedFor(nameof(SaveLabelCommand))]
+    [NotifyCanExecuteChangedFor(nameof(AbrirCommand), nameof(EnviarAlteracaoCommand), nameof(EnviarNovaVersaoCommand))]
     private TemplateItem? _selected;
 
-    /// <summary>Texto de busca vinculado ao TextBox no header.</summary>
+    public ObservableCollection<TemplateVersao> Versoes { get; } = [];
+
+    [ObservableProperty]
+    private string? _versoesMensagem;
+
     [ObservableProperty]
     private string _searchTerm = string.Empty;
 
+    /// <summary>Mostra só os templates alterados neste PC (para enviar).</summary>
     [ObservableProperty]
-    private string _statusText = "Pronto.";
+    private bool _somenteAlterados;
+
+    [ObservableProperty]
+    private string _statusText = string.Empty;
 
     [ObservableProperty]
     private bool _isBusy;
 
-    // ── Construtor ────────────────────────────────────────────────────────
+    [ObservableProperty]
+    private string _resumo = string.Empty;
 
-    public TemplateUpdateViewModel(ILabelRepository repo, ILogger<TemplateUpdateViewModel> logger, Services.IEventoService eventos)
-    {
-        _repo = repo;
-        _logger = logger;
-        _eventos = eventos;
+    public bool ModoPastaLocal => preferencias.Atual.ModoTemplates == ModoTemplates.PastaLocal;
+    public string AvisoModoPasta =>
+        $"Este PC está no modo Pasta local: as etiquetas abrem de \"{preferencias.Atual.PastaTemplates}\". " +
+        "O acervo abaixo continua sendo o do banco. Troque o modo em Configurações.";
 
-        // Quando o usuário digitar no campo de busca, refiltrar a lista.
-        PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(SearchTerm))
-                ApplyFilter();
-        };
-    }
+    public string PastaLocal => arquivos.PastaLocal;
 
-    // ─────────────────────────────────────────────────────────────────────
-    // CARREGAR
-    // ─────────────────────────────────────────────────────────────────────
+    partial void OnSearchTermChanged(string value) => AplicarFiltro();
+    partial void OnSomenteAlteradosChanged(bool value) => AplicarFiltro();
+    partial void OnSelectedChanged(TemplateItem? value) => _ = CarregarVersoesAsync();
+
+    // ── Ciclo de vida (a tela é recriada a cada navegação) ────────────────
+
+    public void Ativar() => sync.DadosAtualizados += OnDadosAtualizados;
+    public void Desativar() => sync.DadosAtualizados -= OnDadosAtualizados;
+
+    private void OnDadosAtualizados() =>
+        System.Windows.Application.Current?.Dispatcher.InvokeAsync(() => { if (!IsBusy) Carregar(); });
+
+    // ── Lista ─────────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task LoadAsync()
+    public void Carregar()
     {
-        IsBusy = true;
-        StatusText = "Carregando etiquetas…";
-
         try
         {
-            var records = await _repo.GetAllTemplatesMasterAsync();
+            var codigoSelecionado = Selected?.Codigo;
+            _todos = arquivos.ListarComStatus().Select(t => new TemplateItem(t)).ToList();
+            AplicarFiltro();
+            Selected = Templates.FirstOrDefault(t => t.Codigo == codigoSelecionado);
 
-            _allItems = records
-                .Select(r => new TemplateItem
-                {
-                    Id = r.Id,
-                    Codigo = r.Codigo,
-                    DescricaoAnvisa = r.DescricaoAnvisa,
-                    LabelFilePath = r.LabelFilePath,
-                    UpdatedAt = r.UpdatedAt
-                })
-                .ToList();
-
-            ApplyFilter();
-            StatusText = $"{_allItems.Count} etiqueta(s) carregada(s).";
+            var alterados = _todos.Count(t => t.TemAlteracaoLocal);
+            var naoBaixados = _todos.Count(t => t.Status is StatusArquivo.NaoBaixado or StatusArquivo.Desatualizado);
+            Resumo = Contagem.Texto(_todos.Count, "template", "templates") +
+                     (alterados > 0 ? $"  ·  {Contagem.Texto(alterados, "alterado neste PC", "alterados neste PC")}" : "") +
+                     (naoBaixados > 0 ? $"  ·  {Contagem.Texto(naoBaixados, "a baixar", "a baixar")}" : "");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erro ao carregar etiquetas");
-            StatusText = "Erro ao carregar etiquetas.";
-        }
-        finally
-        {
-            IsBusy = false;
+            logger.LogError(ex, "Erro ao carregar o acervo");
+            StatusText = $"Erro ao carregar o acervo: {ex.Message}";
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // FILTRO DE BUSCA
-    // ─────────────────────────────────────────────────────────────────────
-
-    private void ApplyFilter()
+    private void AplicarFiltro()
     {
-        var term = SearchTerm.Trim();
+        var termo = SearchTerm.Trim();
+        IEnumerable<TemplateItem> lista = _todos;
 
-        var filtered = string.IsNullOrWhiteSpace(term)
-            ? _allItems
-            : _allItems.Where(i =>
-                i.Codigo.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                i.NomeArquivo.Contains(term, StringComparison.OrdinalIgnoreCase));
+        if (SomenteAlterados)
+            lista = lista.Where(t => t.TemAlteracaoLocal);
 
-        Templates = new ObservableCollection<TemplateItem>(filtered);
+        if (termo.Length > 0)
+            lista = lista.Where(t =>
+                t.Codigo.Contains(termo, StringComparison.OrdinalIgnoreCase) ||
+                t.NomeArquivo.Contains(termo, StringComparison.OrdinalIgnoreCase));
+
+        Templates = new ObservableCollection<TemplateItem>(lista);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // IMPORTAR PASTA  (associa .btw existentes sem mover arquivos)
-    // ─────────────────────────────────────────────────────────────────────
-
-    [RelayCommand]
-    private async Task ImportFolderAsync()
+    private async Task CarregarVersoesAsync()
     {
-        // Usando o componente nativo do WPF/Win32 para modernidade
-        var dlg = new OpenFolderDialog
-        {
-            Title = "Selecione a pasta com os arquivos .btw",
-            Multiselect = false
-        };
-
-        if (dlg.ShowDialog() != true) return;
-
-        // Na nova API do Win32, a propriedade é FolderName
-        await ProcessFolderAsync(dlg.FolderName, copyFiles: false);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // SINCRONIZAR NOVA PASTA
-    // ─────────────────────────────────────────────────────────────────────
-
-    [RelayCommand]
-    private async Task SyncNewFolderAsync()
-    {
-        var dlg = new OpenFolderDialog
-        {
-            Title = "Selecione a pasta de origem dos arquivos .btw",
-            Multiselect = false
-        };
-
-        if (dlg.ShowDialog() != true) return;
-
-        // Confirmar destino
-        var destino = Path.Combine(_templateBaseDir,
-            $"Sync_{DateTime.Now:yyyyMMdd_HHmmss}");
-
-        var confirm = MessageBox.Show(
-            $"Os arquivos .btw serão copiados para:\n\n{destino}\n\n" +
-            $"Confirmar sincronização?",
-            "Sincronizar Nova Pasta",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (confirm != MessageBoxResult.Yes) return;
-
-        await ProcessFolderAsync(dlg.FolderName, copyFiles: true, destDir: destino);
-    }
-
-    // Método central — importar OU sincronizar (com cópia)
-    private async Task ProcessFolderAsync(string sourceDir, bool copyFiles, string? destDir = null)
-    {
-        IsBusy = true;
-        StatusText = copyFiles ? "Sincronizando pasta…" : "Importando pasta…";
-
-        try
-        {
-            var btwFiles = Directory.GetFiles(sourceDir, "*.btw", SearchOption.AllDirectories);
-
-            if (btwFiles.Length == 0)
-            {
-                MessageBox.Show("Nenhum arquivo .btw encontrado na pasta selecionada.",
-                    "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
-                StatusText = "Nenhum arquivo .btw encontrado.";
-                return;
-            }
-
-            if (copyFiles && destDir is not null)
-                Directory.CreateDirectory(destDir);
-
-            // Monta lista (FileName sem extensão → caminho final)
-            var templates = new List<(string FileName, string FilePath)>();
-
-            foreach (var src in btwFiles)
-            {
-                var finalPath = src;
-
-                if (copyFiles && destDir is not null)
-                {
-                    var dest = Path.Combine(destDir, Path.GetFileName(src));
-
-                    // Preserva hierarquia de subpastas se houver
-                    var rel = Path.GetRelativePath(sourceDir, src);
-                    dest = Path.Combine(destDir, rel);
-                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-
-                    File.Copy(src, dest, overwrite: true);
-                    finalPath = dest;
-                }
-
-                // Chave de associação: nome do arquivo sem extensão = Codigo
-                var codigo = Path.GetFileNameWithoutExtension(src);
-                templates.Add((codigo, finalPath));
-            }
-
-            var atualizados = await _repo.UpsertTemplatesAsync(templates);
-            await _eventos.RegistrarAsync(Services.Acoes.TemplateAlterado, detalhes: new
-            {
-                origem = copyFiles ? "sincronizar_pasta" : "importar_pasta",
-                pasta = sourceDir,
-                destino = destDir,
-                quantidade = templates.Count
-            });
-
-            StatusText = copyFiles
-                ? $"Sincronização concluída. {atualizados} etiqueta(s) associada(s) na pasta:\n{destDir}"
-                : $"{atualizados} etiqueta(s) associada(s) à pasta selecionada.";
-
-            _logger.LogInformation(
-                "ProcessFolder: {Count} templates processados, {Updated} atualizados. CopyFiles={Copy}",
-                templates.Count, atualizados, copyFiles);
-
-            await LoadAsync(); // atualiza a grid
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro ao processar pasta de templates");
-            StatusText = $"Erro: {ex.Message}";
-            MessageBox.Show($"Erro ao processar a pasta:\n{ex.Message}",
-                "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // IMPORTAR ARQUIVO ÚNICO
-    // ─────────────────────────────────────────────────────────────────────
-
-    [RelayCommand]
-    private async Task AddSingleTemplateAsync()
-    {
-        var dlg = new OpenFileDialog
-        {
-            Title = "Selecionar arquivo de etiqueta",
-            Filter = "BarTender Template (*.btw)|*.btw|Todos os arquivos (*.*)|*.*",
-            Multiselect = false
-        };
-
-        if (dlg.ShowDialog() != true) return;
-
-        IsBusy = true;
-        StatusText = "Associando arquivo…";
-
-        try
-        {
-            var codigo = Path.GetFileNameWithoutExtension(dlg.FileName);
-            var count = await _repo.UpsertTemplatesAsync([(codigo, dlg.FileName)]);
-            await _eventos.RegistrarAsync(Services.Acoes.TemplateAlterado, codigo: codigo,
-                detalhes: new { origem = "importar_arquivo", arquivo = dlg.FileName });
-
-            StatusText = count > 0
-                ? $"Arquivo associado: {Path.GetFileName(dlg.FileName)}"
-                : $"Nenhum registro encontrado com código '{codigo}'.";
-
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro ao importar arquivo único");
-            StatusText = $"Erro: {ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // ABRIR ETIQUETA no BarTender
-    // ─────────────────────────────────────────────────────────────────────
-
-    private bool CanOpenLabel() => Selected?.TemArquivo == true;
-
-    [RelayCommand(CanExecute = nameof(CanOpenLabel))]
-    private async Task OpenLabelAsync()
-    {
-        if (Selected?.LabelFilePath is not { } path) return;
-
-        if (!File.Exists(path))
-        {
-            MessageBox.Show($"Arquivo não encontrado:\n{path}",
-                "Arquivo não encontrado", MessageBoxButton.OK, MessageBoxImage.Warning);
+        Versoes.Clear();
+        VersoesMensagem = null;
+        if (Selected is not { } item || item.Local.Info.VersaoAtual == 0)
             return;
-        }
 
         try
         {
-            // Abre o .btw no programa associado (BarTender).
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = path,
-                UseShellExecute = true   // usa o programa padrão do sistema para .btw
-            });
-
-            StatusText = $"Abrindo: {Path.GetFileName(path)}";
-
-            await Task.Delay(2000);
-            StatusText = "Etiqueta aberta no BarTender. Salve diretamente no BarTender.";
+            foreach (var v in await arquivos.ListarVersoesAsync(item.Codigo))
+                Versoes.Add(v);
+        }
+        catch (SemConexaoException)
+        {
+            VersoesMensagem = "Sem internet: as versões guardadas aparecem quando a conexão voltar.";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erro ao abrir etiqueta {Path}", path);
-            StatusText = $"Erro ao abrir etiqueta: {ex.Message}";
-            MessageBox.Show($"Não foi possível abrir o arquivo:\n{ex.Message}",
-                "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            logger.LogError(ex, "Erro ao listar versões de {Codigo}", item.Codigo);
+            VersoesMensagem = $"Não foi possível listar as versões: {ex.Message}";
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // SALVAR / SUBSTITUIR arquivo de uma etiqueta selecionada
-    // ─────────────────────────────────────────────────────────────────────
+    // ── Enviar arquivos ao acervo ─────────────────────────────────────────
 
-    private bool HasSelection() => Selected is not null;
-
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task SaveLabelAsync()
+    [RelayCommand]
+    private async Task AdicionarArquivosAsync()
     {
-        if (Selected is null) return;
+        var dlg = new OpenFileDialog
+        {
+            Title = "Adicionar templates ao acervo",
+            Filter = "BarTender Template (*.btw)|*.btw",
+            Multiselect = true
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        await Ocupado("Enviando…", async () =>
+        {
+            int criados = 0, novas = 0, iguais = 0;
+            foreach (var arquivo in dlg.FileNames)
+            {
+                var r = await arquivos.EnviarArquivoAsync(arquivo, "upload");
+                switch (r.Resultado)
+                {
+                    case ResultadoEnvio.Criado: criados++; break;
+                    case ResultadoEnvio.NovaVersao: novas++; break;
+                    default: iguais++; break;
+                }
+                await RegistrarEnvio(r, "upload", arquivo);
+            }
+            StatusText = ResumoEnvio(criados, novas, iguais);
+        });
+    }
+
+    [RelayCommand]
+    private async Task ImportarPastaAsync()
+    {
+        var dlg = new OpenFolderDialog { Title = "Importar todos os .btw de uma pasta para o acervo" };
+        if (dlg.ShowDialog() != true) return;
+
+        await Ocupado("Lendo a pasta…", async () =>
+        {
+            var progresso = new Progress<(int Feitos, int Total)>(p => StatusText = $"Enviando {p.Feitos} de {p.Total}…");
+            var r = await arquivos.EnviarPastaAsync(dlg.FolderName, progresso);
+
+            await eventos.RegistrarAsync(Acoes.TemplateAlterado, detalhes: new
+            {
+                origem = "importacao_pasta",
+                pasta = dlg.FolderName,
+                criados = r.Criados,
+                novasVersoes = r.NovasVersoes,
+                identicos = r.Identicos,
+                erros = r.Erros.Count
+            });
+
+            StatusText = ResumoEnvio(r.Criados, r.NovasVersoes, r.Identicos) +
+                         (r.Duplicados > 0 ? $" {r.Duplicados} repetido(s) em subpastas: ficou o mais recente." : "") +
+                         (r.Erros.Count > 0 ? $" {r.Erros.Count} com erro." : "");
+
+            if (r.Erros.Count > 0)
+                dialog.ShowWarning("Importar pasta", "Arquivos com erro:\n\n" + string.Join("\n", r.Erros.Take(20)));
+        });
+    }
+
+    private bool TemSelecao() => Selected is not null;
+
+    [RelayCommand(CanExecute = nameof(TemSelecao))]
+    private async Task EnviarNovaVersaoAsync()
+    {
+        if (Selected is not { } item) return;
 
         var dlg = new OpenFileDialog
         {
-            Title = $"Substituir template: {Selected.Codigo}",
-            Filter = "BarTender Template (*.btw)|*.btw|Todos os arquivos (*.*)|*.*",
-            FileName = Path.GetFileName(Selected.LabelFilePath ?? string.Empty),
+            Title = $"Nova versão de {item.Codigo}",
+            Filter = "BarTender Template (*.btw)|*.btw",
             Multiselect = false
         };
-
         if (dlg.ShowDialog() != true) return;
 
-        IsBusy = true;
-        StatusText = "Salvando associação…";
+        await Ocupado("Enviando…", async () =>
+        {
+            var r = await arquivos.EnviarArquivoAsync(dlg.FileName, "upload", item.Codigo);
+            await RegistrarEnvio(r, "upload", dlg.FileName);
+            StatusText = r.Resultado == ResultadoEnvio.Identico
+                ? $"{item.Codigo}: o arquivo é igual à versão atual (v{r.Versao}); nada foi alterado."
+                : $"{item.Codigo}: versão v{r.Versao} enviada.";
+        });
+    }
+
+    private bool PodeEnviarAlteracao() => Selected?.TemAlteracaoLocal == true;
+
+    [RelayCommand(CanExecute = nameof(PodeEnviarAlteracao))]
+    private async Task EnviarAlteracaoAsync()
+    {
+        if (Selected is not { } item) return;
+
+        await Ocupado("Enviando alteração…", async () =>
+        {
+            var r = await arquivos.EnviarAlteracaoAsync(item.Codigo, forcar: false);
+
+            if (r.Resultado == ResultadoEnvio.Conflito)
+            {
+                var quando = r.ConflitoEm?.UtcToLocal().ToString("dd/MM HH:mm") ?? "?";
+                var substituir = dialog.AskConfirmation("Template alterado por outra pessoa",
+                    $"{r.ConflitoPor ?? "Alguém"} enviou a v{r.Versao} de {item.Codigo} em {quando}, " +
+                    "depois da versão que você editou.\n\n" +
+                    "Enviar a sua alteração mesmo assim? A versão dela fica guardada como backup.");
+                if (!substituir)
+                {
+                    StatusText = "Envio cancelado. Sua alteração continua neste PC.";
+                    return;
+                }
+                r = await arquivos.EnviarAlteracaoAsync(item.Codigo, forcar: true);
+            }
+
+            await RegistrarEnvio(r, "edicao", item.Local.CaminhoLocal);
+            StatusText = r.Resultado == ResultadoEnvio.Identico
+                ? $"{item.Codigo}: o arquivo é igual à versão do banco; nada foi enviado."
+                : $"{item.Codigo}: alteração enviada como v{r.Versao}.";
+        });
+    }
+
+    [RelayCommand]
+    private async Task RestaurarAsync(TemplateVersao? versao)
+    {
+        if (Selected is not { } item || versao is null) return;
+
+        var aviso = item.TemAlteracaoLocal
+            ? "\n\nAtenção: a alteração feita neste PC e ainda não enviada será substituída."
+            : "";
+        if (!dialog.AskConfirmation("Restaurar versão",
+                $"Restaurar a v{versao.Versao} de {item.Codigo} ({versao.Resumo})?\n\n" +
+                $"Ela vira uma versão nova; a atual fica guardada como backup.{aviso}"))
+            return;
+
+        await Ocupado("Restaurando…", async () =>
+        {
+            var r = await arquivos.RestaurarAsync(item.Codigo, versao.Versao);
+            await eventos.RegistrarAsync(Acoes.TemplateAlterado, codigo: item.Codigo,
+                detalhes: new { origem = "restauracao", restaurada = versao.Versao, novaVersao = r.Versao });
+            StatusText = r.Resultado == ResultadoEnvio.Identico
+                ? $"{item.Codigo}: a v{versao.Versao} já é igual à atual."
+                : $"{item.Codigo}: v{versao.Versao} restaurada como v{r.Versao}.";
+        });
+    }
+
+    // ── Abrir / exportar / sincronizar ────────────────────────────────────
+
+    private bool PodeAbrir() => Selected?.PodeAbrir == true;
+
+    [RelayCommand(CanExecute = nameof(PodeAbrir))]
+    private void Abrir()
+    {
+        if (Selected?.Local.CaminhoLocal is not { } caminho) return;
 
         try
         {
-            // Copia para pasta centralizada se estiver fora dela
-            var destPath = dlg.FileName;
-
-            if (!dlg.FileName.StartsWith(_templateBaseDir, StringComparison.OrdinalIgnoreCase))
-            {
-                Directory.CreateDirectory(_templateBaseDir);
-                destPath = Path.Combine(_templateBaseDir, Path.GetFileName(dlg.FileName));
-                File.Copy(dlg.FileName, destPath, overwrite: true);
-            }
-
-            var ok = await _repo.AssociateLabelFileAsync(Selected.Id, destPath);
-            if (ok)
-                await _eventos.RegistrarAsync(Services.Acoes.TemplateAlterado, codigo: Selected.Codigo,
-                    detalhes: new { origem = "substituir_arquivo", arquivo = destPath });
-
-            StatusText = ok
-                ? $"Template atualizado: {Path.GetFileName(destPath)}"
-                : "Registro não encontrado no banco.";
-
-            await LoadAsync();
+            Process.Start(new ProcessStartInfo(caminho) { UseShellExecute = true });
+            StatusText = $"Aberto no BarTender: {Path.GetFileName(caminho)}. Depois de salvar, use \"Enviar alteração\".";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erro ao salvar template Id={Id}", Selected.Id);
+            logger.LogError(ex, "Erro ao abrir {Caminho}", caminho);
+            dialog.ShowError("Abrir template", $"Não foi possível abrir o arquivo:\n{ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportarAsync()
+    {
+        var dlg = new OpenFolderDialog { Title = "Exportar o acervo (versão atual de todos os templates) para a pasta" };
+        if (dlg.ShowDialog() != true) return;
+
+        await Ocupado("Exportando…", async () =>
+        {
+            var (copiados, faltando) = await arquivos.ExportarAsync(dlg.FolderName);
+            StatusText = $"{copiados} template(s) exportado(s) para {dlg.FolderName}." +
+                         (faltando > 0 ? $" {faltando} ainda não baixado(s) neste PC ficaram de fora." : "");
+        });
+    }
+
+    [RelayCommand]
+    private async Task SincronizarAsync()
+    {
+        await Ocupado("Sincronizando…", async () =>
+        {
+            var ok = await sync.SincronizarAgoraAsync();
+            StatusText = ok ? "Acervo sincronizado." : "Sem internet: mostrando a cópia deste PC.";
+        });
+    }
+
+    // ── Apoio ─────────────────────────────────────────────────────────────
+
+    /// <summary>Roda a ação com a tela ocupada; depois sincroniza e recarrega a lista.</summary>
+    private async Task Ocupado(string mensagem, Func<Task> acao)
+    {
+        IsBusy = true;
+        StatusText = mensagem;
+        try
+        {
+            await acao();
+            await sync.SincronizarAgoraAsync();
+        }
+        catch (SemConexaoException ex)
+        {
+            StatusText = ex.Message;
+            dialog.ShowWarning("Sem internet", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro na tela Templates");
             StatusText = $"Erro: {ex.Message}";
+            dialog.ShowError("Templates", ex.Message);
         }
         finally
         {
             IsBusy = false;
+            Carregar(); // reseleciona o item, o que recarrega as versões
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // FECHAR
-    // ─────────────────────────────────────────────────────────────────────
+    private Task RegistrarEnvio(EnvioTemplate r, string origem, string? arquivo) =>
+        r.Resultado is ResultadoEnvio.Criado or ResultadoEnvio.NovaVersao
+            ? eventos.RegistrarAsync(Acoes.TemplateAlterado, codigo: r.Codigo,
+                detalhes: new { origem, versao = r.Versao, arquivo })
+            : Task.CompletedTask;
 
-    [RelayCommand]
-    private static void Close()
-    {
-        Application.Current.Windows
-            .OfType<Window>()
-            .FirstOrDefault(w => w.IsActive)
-            ?.Close();
-    }
+    private static string ResumoEnvio(int criados, int novas, int iguais) =>
+        $"{Contagem.Texto(criados, "template novo", "templates novos")}, " +
+        $"{Contagem.Texto(novas, "nova versão", "novas versões")}, " +
+        $"{Contagem.Texto(iguais, "já igual (ignorado)", "já iguais (ignorados)")}.";
 }

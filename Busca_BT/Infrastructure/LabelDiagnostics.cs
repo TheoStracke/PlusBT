@@ -13,7 +13,9 @@ namespace Busca_BT.Infrastructure;
 /// </summary>
 public static class LabelDiagnostics
 {
-    public static void Aplicar(IReadOnlyList<LabelRecord> labels, IEnumerable<LabelRecord> templates, DateTime hoje)
+    public static void Aplicar(
+        IReadOnlyList<LabelRecord> labels, IEnumerable<LabelRecord> templates, DateTime hoje,
+        Func<string, string>? mensagemArquivoAusente = null)
     {
         var porChave = new Dictionary<string, LabelRecord>();
         // Prefixo do nome do arquivo até o primeiro separador ("C76421 - Free T4" → "C76421").
@@ -62,7 +64,7 @@ public static class LabelDiagnostics
                 else if (string.IsNullOrWhiteSpace(path))
                     pendencias.Add($"Template '{template.Codigo}' cadastrado sem arquivo.");
                 else if (!ArquivoExiste(path))
-                    pendencias.Add($"Arquivo do template não encontrado: {path}");
+                    pendencias.Add(mensagemArquivoAusente?.Invoke(path) ?? $"Arquivo do template não encontrado: {path}");
                 else
                     label.LabelFilePath = path;
             }

@@ -50,12 +50,16 @@
 - Indicador no topo: 🟢 *Online* / 🟠 *Offline, última sincronização 10:42* / 🔄 *Sincronizando…*
 - **Importar planilha** e **cadastrar template** exigem internet. As duas coisas são feitas no PC de administração.
 
-### 3. Templates
-- Continuam na **pasta de rede local**, que não depende de internet.
-- O banco guarda **só o nome do arquivo** (`C76421.btw`), e não o caminho completo.
-- Cada PC configura a sua **pasta de templates** nas Configurações.
-- O vínculo tolerante continua valendo (`LabelDiagnostics`): ignora maiúsculas, espaços, zeros à esquerda e sufixos.
-- Isso corrige o problema de hoje, em que "Sincronizar pasta" e "Substituir arquivo" gravam um caminho `C:\ProgramData` no banco.
+### 3. Templates (revisado em 02/10/2026)
+- Os **arquivos `.btw` ficam no Supabase**, numa tabela, com **hash SHA-256** de cada versão. O acervo atual tem 880 arquivos e 39 MB (maior arquivo: 60 KB).
+- **Versionamento:** cada envio cria uma versão nova. Ficam guardadas a **atual e as 3 anteriores** como backup. Enviar um arquivo idêntico (mesmo hash) não cria versão.
+- **Cópia local em cada PC** (`C:\ProgramData\BuscaBT\Templates`): a sincronização baixa só o que mudou e confere o hash. **Abrir etiqueta usa sempre a cópia local**, então funciona sem internet.
+- **Só administrador envia:** adicionar arquivos, importar uma pasta inteira, ou "Enviar nova versão" de um template.
+- **Edição no BarTender:** o admin edita a cópia local; o app mostra "Alterado neste PC" e o botão **"Enviar alteração"** faz o upload como nova versão. Se outra pessoa enviou uma versão nesse meio-tempo, o app avisa antes de substituir.
+- **PC de impressão:** se o arquivo local for alterado por alguém com perfil Impressão, a alteração é guardada em `_descartados` e o arquivo volta à versão do banco.
+- **Restaurar versão:** cria uma versão nova com o conteúdo antigo; o histórico nunca se perde.
+- **Modo por PC (Configurações):** **Banco de dados** (padrão, tudo acima) ou **Pasta local** (abre direto de uma pasta escolhida, por exemplo `\\Serveradeprint\...`, pelo vínculo tolerante; serve de contingência). Há também **"Exportar acervo"** para gravar todos os templates numa pasta.
+- A **carga inicial** dos 880 arquivos é feita por um administrador, no app, com "Importar pasta" apontando para `\\Serveradeprint\arquivos\Etiquetas_PlusBT`.
 
 ### 4. Operadores
 - Ao abrir o app, aparece a tela **"Quem está operando?"**, com os operadores em cartões e um **PIN opcional**.
@@ -75,11 +79,12 @@
 | `operadores` | `id`, `nome`, `pin_hash` (nulo = sem PIN), `perfil` (`admin` / `impressao`), `ativo`, `criado_em` |
 | `importacoes` | `id`, `arquivo`, `importado_em`, `importado_por` → operadores, `total`, `importados`, `ignorados` |
 | `itens` | `id`, `importacao_id`, `item`, `invoice`, `codigo`, `descricao`, `qtd`, `lote`, `validade` (nulo se inválida), `validade_texto`, `registro_anvisa`, `lpn`, `local`, `avisos`, `aberta_em`, `aberta_por`, `conferida_em`, `conferida_por`, `atualizado_em` |
-| `templates` | `id`, `codigo` (único), `arquivo` (só o nome), `atualizado_em`, `atualizado_por` |
+| `templates` | `id`, `codigo` (único), `nome_arquivo`, `versao_atual`, `hash_atual`, `atualizado_em`, `atualizado_por` |
+| `template_versoes` | `template_id`, `versao`, `nome_arquivo`, `conteudo` (o `.btw`), `hash_sha256`, `tamanho`, `origem` (upload / importacao_pasta / edicao / restauracao), `enviado_em`, `enviado_por` |
 | `eventos` | `id`, `ocorrido_em`, `operador_id`, `pc`, `acao` (importou, abriu, ciencia, conferiu, limpou_fila, template_alterado…), `invoice`, `codigo`, `detalhes` (jsonb) |
 | `schema_versao` | Versão dos scripts de migração já aplicados |
 
-- Os scripts ficam versionados no repositório (`db/migrations/001_inicial.sql`, …).
+- Os scripts ficam versionados no repositório (`Busca_BT/Data/Migrations/001_inicial.sql`, …) e são aplicados pelo app ao iniciar.
 - **Sincronização offline:** cada ação feita no PC de impressão leva um `id` gerado localmente (UUID). Assim, reenviar a mesma ação depois de uma queda não a duplica.
 
 ---
@@ -91,9 +96,9 @@
 | 1 | **Banco na nuvem** | Scripts da estrutura no Postgres; camada de dados trocada para Npgsql; importação em lote (rápida mesmo com internet lenta); tela de Configurações para o Supabase; fim da busca automática de servidor SQL na rede |
 | 2 | **Operadores** | Tela de seleção com PIN; perfis; cadastro de operadores (Administrador); tabela de eventos |
 | 3 | **Offline** | Cópia local (SQLite) no PC de impressão; fila de envio; sincronização automática; indicador online/offline |
-| 4 | **Templates por nome** | Pasta de templates configurável por PC; conversão dos caminhos atuais para nome de arquivo; ajuste da tela Templates |
-| 5 | **Migração dos dados** | Copiar o acervo de templates (e, se decidido, o histórico) do SQL Server para o Supabase |
-| — | **Virada** | Testar nos dois PCs; o SQL Server atual continua funcionando até a virada, e serve de volta segura se algo der errado |
+| 4 | **Acervo de templates no banco** | 4.1 tabela de versões com hash · 4.2 upload (arquivos e pasta) com versionamento e 3 backups · 4.3 cópia local baixando só o que mudou · 4.4 abrir sempre pela cópia local · 4.5 "Enviar alteração" com aviso de conflito e proteção no PC de impressão · 4.6 tela Templates com status, versões e restaurar · 4.7 modo Banco / Pasta local e "Exportar acervo" |
+| 5 | **Carga inicial** | Um administrador importa os 880 `.btw` de `\\Serveradeprint` pelo app ("Importar pasta"); o histórico do SQL Server não é migrado (era banco de teste) |
+| — | **Virada** | Testar nos dois PCs e distribuir o `.exe` |
 
 ### Depois da migração
 - **Dados preenchidos no BarTender:** o sistema envia lote, validade e quantidade e acaba com a digitação manual. Exige que os `.btw` tenham campos nomeados, um ajuste feito uma vez em cada template.

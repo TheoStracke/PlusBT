@@ -68,6 +68,8 @@ public sealed partial class SyncService(
     IDbConnectionFactory factory,
     LabelRepository remoto,
     OperadorRepository operadoresRemoto,
+    TemplateRepository templatesRemoto,
+    ITemplateArquivos arquivos,
     DatabaseInitializer initializer,
     ILogger<SyncService> logger) : ISyncService
 {
@@ -224,22 +226,27 @@ public sealed partial class SyncService(
     private async Task BaixarCopiaAsync(CancellationToken ct)
     {
         var itens = await remoto.GetAllAsync();
-        var templates = (await remoto.GetAllTemplatesMasterAsync()).ToList();
+        var templates = await templatesRemoto.ListarAsync();
         var operadores = await operadoresRemoto.ListarAsync(somenteAtivos: false);
         ct.ThrowIfCancellationRequested();
 
-        // Só regrava e avisa as telas quando algo mudou de fato.
+        // Só regrava a cópia quando algo mudou de fato.
         var hash = Hash(itens, templates, operadores);
-        if (hash == _ultimoHash)
-            return;
+        var mudou = hash != _ultimoHash;
+        if (mudou)
+        {
+            cache.SubstituirTudo(itens, templates, operadores);
+            if (_ultimoHash is not null)
+                LogDadosNovos(logger, itens.Count);
+            _ultimoHash = hash;
+        }
 
-        cache.SubstituirTudo(itens, templates, operadores);
-        var primeiraCarga = _ultimoHash is null;
-        _ultimoHash = hash;
+        // Arquivos .btw novos ou alterados → pasta local (roda sempre: um arquivo pode
+        // ter faltado na última vez, por exemplo por estar aberto no BarTender).
+        var baixados = await arquivos.SincronizarArquivosAsync(templates, ct);
 
-        if (!primeiraCarga)
-            LogDadosNovos(logger, itens.Count);
-        DadosAtualizados?.Invoke();
+        if (mudou || baixados > 0)
+            DadosAtualizados?.Invoke();
     }
 
     private static string Hash(object itens, object templates, object operadores)

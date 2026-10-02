@@ -30,6 +30,9 @@ namespace Busca_BT.Infrastructure
             services.AddSingleton<LabelRepository>();
             services.AddSingleton<OperadorRepository>();
             services.AddSingleton<LocalCache>();
+            services.AddSingleton<TemplateRepository>();
+            services.AddSingleton<IPreferenciasStore, PreferenciasStore>();
+            services.AddSingleton<ITemplateArquivos, TemplateArquivoService>();
             services.AddSingleton<ISyncService, SyncService>();
             services.AddSingleton<ILabelRepository, OfflineLabelRepository>();
             services.AddSingleton<IOperadorRepository, OfflineOperadorRepository>();
