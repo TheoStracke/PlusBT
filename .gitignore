@@ -5,3 +5,8 @@
 /.vs
 [Bb]in/
 [Oo]bj/
+
+# Segredos locais (connection string do Supabase etc.) — nunca versionar
+.env
+.env.*
+!.env.example
