@@ -93,26 +93,29 @@ namespace Busca_BT.ViewModels
             LabelRecord? anterior = null;
             LabelRecord? inicio = null;
             var qtd = 0;
+            var etiquetas = 0;
 
             foreach (var l in Items)
             {
                 if (LpnOrdem.MudouLpn(anterior, l))
                 {
-                    FecharBloco(inicio, qtd);
+                    FecharBloco(inicio, qtd, etiquetas);
                     inicio = l;
                     qtd = 0;
+                    etiquetas = 0;
                 }
                 l.InicioDeLpn = ReferenceEquals(l, inicio);
                 qtd++;
+                etiquetas += l.QtdInvoice;
                 anterior = l;
             }
-            FecharBloco(inicio, qtd);
+            FecharBloco(inicio, qtd, etiquetas);
 
-            static void FecharBloco(LabelRecord? inicio, int qtd)
+            static void FecharBloco(LabelRecord? inicio, int qtd, int etiquetas)
             {
                 if (inicio is null) return;
                 var titulo = string.IsNullOrWhiteSpace(inicio.Lpn) ? "Sem LPN" : $"LPN {inicio.Lpn.Trim()}";
-                inicio.LpnBlocoTexto = $"{titulo}  ·  {Contagem.Itens(qtd)}";
+                inicio.LpnBlocoTexto = $"{titulo}  ·  {Contagem.Itens(qtd)}  ·  {Contagem.Etiquetas(etiquetas)}";
             }
         }
 

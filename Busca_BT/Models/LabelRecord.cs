@@ -102,7 +102,7 @@ namespace Busca_BT.Models
         }
         private bool _inicioDeLpn;
 
-        /// <summary>Texto da faixa do bloco: "LPN FL382157 · 4 itens".</summary>
+        /// <summary>Texto da faixa do bloco: "LPN FL382157 · 4 itens · 18 etiquetas".</summary>
         public string LpnBlocoTexto
         {
             get => _lpnBlocoTexto;

@@ -156,6 +156,7 @@
                                                     <ColumnDefinition Width="56"/>
                                                     <ColumnDefinition Width="120"/>
                                                     <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="70"/>
                                                     <ColumnDefinition Width="130"/>
                                                     <ColumnDefinition Width="150"/>
                                                     <ColumnDefinition Width="100"/>
@@ -163,9 +164,11 @@
                                                 <TextBlock Grid.Column="0" Text="Item" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
                                                 <TextBlock Grid.Column="1" Text="Código" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
                                                 <TextBlock Grid.Column="2" Text="Descrição ANVISA" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
-                                                <TextBlock Grid.Column="3" Text="Lote" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
-                                                <TextBlock Grid.Column="4" Text="LPN" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
-                                                <TextBlock Grid.Column="5" Text="Ação" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
+                                                <TextBlock Grid.Column="3" Text="Qtd" FontSize="12" FontWeight="SemiBold" Opacity="0.7"
+                                                           HorizontalAlignment="Center" ToolTip="Quantidade do item na planilha (Qtd Invoice)"/>
+                                                <TextBlock Grid.Column="4" Text="Lote" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
+                                                <TextBlock Grid.Column="5" Text="LPN" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
+                                                <TextBlock Grid.Column="6" Text="Ação" FontSize="12" FontWeight="SemiBold" Opacity="0.7"/>
                                             </Grid>
                                         </Border>
 
@@ -201,6 +204,7 @@
                                                                 <ColumnDefinition Width="56"/>
                                                                 <ColumnDefinition Width="120"/>
                                                                 <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="70"/>
                                                                 <ColumnDefinition Width="130"/>
                                                                 <ColumnDefinition Width="150"/>
                                                                 <ColumnDefinition Width="100"/>
@@ -210,9 +214,11 @@
                                                             <TextBlock Grid.Column="2" Text="{Binding DescricaoAnvisa}" VerticalAlignment="Center"
                                                                        TextTrimming="CharacterEllipsis" Margin="0,0,12,0"
                                                                        ToolTip="{Binding DescricaoAnvisa}"/>
-                                                            <TextBlock Grid.Column="3" Text="{Binding Lote}" VerticalAlignment="Center"/>
-                                                            <TextBlock Grid.Column="4" Text="{Binding Lpn}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                                            <ui:Button Grid.Column="5" MinWidth="80"
+                                                            <TextBlock Grid.Column="3" Text="{Binding QtdInvoice}" FontWeight="SemiBold"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="4" Text="{Binding Lote}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="5" Text="{Binding Lpn}" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                            <ui:Button Grid.Column="6" MinWidth="80"
                                                                        ToolTip="{Binding AbertaTexto}"
                                                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                        CommandParameter="{Binding}">
@@ -236,7 +242,7 @@
                                                             </ui:Button>
 
                                                             <!-- Pendências do item (sem template, data inválida…) -->
-                                                            <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="5" Margin="0,4,0,2"
+                                                            <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="6" Margin="0,4,0,2"
                                                                        Visibility="{Binding TemPendencia, Converter={StaticResource BoolToVisibilityConverter}}">
                                                                 <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Warning16" Filled="True" FontSize="14"
                                                                                VerticalAlignment="Top" Margin="0,1,6,0"
