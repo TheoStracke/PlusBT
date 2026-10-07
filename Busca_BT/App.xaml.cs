@@ -109,6 +109,9 @@ namespace Busca_BT
             }
             sync.Iniciar();
 
+            // Atualização pela internet (GitHub Releases): baixa em segundo plano.
+            ServiceProvider.GetRequiredService<IAtualizacaoService>().Iniciar();
+
             splash.SetStatus("Carregando invoices…");
 
             // Configure navigation maps

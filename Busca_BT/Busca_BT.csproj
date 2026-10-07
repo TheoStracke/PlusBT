@@ -13,7 +13,18 @@
 		<ApplicationIcon>favicon.ico</ApplicationIcon>
 		<Copyright>EULA</Copyright>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<!-- Versão do app. O publicar.ps1 lê daqui e gera a release do Velopack com ela:
+		     subir este número a cada versão nova que for para os PCs. -->
+		<Version>3.1.0</Version>
+		<!-- Main próprio (Program.cs): o Velopack precisa rodar antes do WPF. -->
+		<StartupObject>Busca_BT.Program</StartupObject>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- App.xaml vira Page para o WPF não gerar o Main dele. -->
+		<ApplicationDefinition Remove="App.xaml" />
+		<Page Include="App.xaml" />
+	</ItemGroup>
 
   <ItemGroup>
     <None Remove="appsettings.json" />
@@ -45,6 +56,8 @@
 		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.*" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.*" />
 		<PackageReference Include="WPF-UI" Version="4.3.0" />
+		<!-- Mesma versão do vpk (dotnet tool) usado no publicar.ps1. -->
+		<PackageReference Include="Velopack" Version="1.2.0" />
 	</ItemGroup>
 
 	<ItemGroup>

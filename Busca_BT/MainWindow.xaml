@@ -32,6 +32,28 @@
             <Border Grid.Column="0" Background="{DynamicResource ControlFillColorDefaultBrush}">
                 <DockPanel Margin="12,16">
 
+                    <!-- Versão do app (rodapé, abaixo de tudo) -->
+                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersaoTexto}" FontSize="11" Opacity="0.5"
+                               HorizontalAlignment="Center" Margin="0,8,0,0"/>
+
+                    <!-- Atualização baixada do GitHub: instala ao reiniciar (ou na próxima abertura) -->
+                    <Border DockPanel.Dock="Bottom" CornerRadius="8" Padding="10,8" Margin="0,0,0,8"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" BorderThickness="1"
+                            Visibility="{Binding IsAtualizacaoPronta, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding AtualizacaoTexto}" FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Text="É instalada ao reiniciar ou na próxima vez que o app abrir."
+                                       FontSize="11" Opacity="0.65" TextWrapping="Wrap"/>
+                            <ui:Button Content="Reiniciar e atualizar"
+                                       Icon="{ui:SymbolIcon ArrowDownload20}"
+                                       Appearance="Primary"
+                                       HorizontalAlignment="Stretch"
+                                       Margin="0,8,0,0"
+                                       Command="{Binding ReiniciarEAtualizarCommand}"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Conexão com o Supabase (rodapé da barra lateral, acima do operador) -->
                     <Border DockPanel.Dock="Bottom" CornerRadius="8" Padding="10,8" Margin="0,0,0,8"
                             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"

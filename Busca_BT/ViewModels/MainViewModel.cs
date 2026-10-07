@@ -10,6 +10,7 @@ namespace Busca_BT.ViewModels
         private readonly ISessaoOperador _sessao;
         private readonly IEventoService _eventos;
         private readonly ISyncService _sync;
+        private readonly IAtualizacaoService _atualizacao;
 
         public object? CurrentView { get; private set; }
 
@@ -24,14 +25,20 @@ namespace Busca_BT.ViewModels
         public ICommand ShowOperadoresCommand { get; }
         public ICommand TrocarOperadorCommand { get; }
         public ICommand SincronizarAgoraCommand { get; }
+        public ICommand ReiniciarEAtualizarCommand { get; }
 
         public MainViewModel(
             INavigationService navigation,
             ISessaoOperador sessao,
             IEventoService eventos,
             ISyncService sync,
+            IAtualizacaoService atualizacao,
             OperadorSelecaoViewModel selecao)
         {
+            _atualizacao = atualizacao;
+            _atualizacao.StatusMudou += () => System.Windows.Application.Current?.Dispatcher.InvokeAsync(AtualizarAtualizacao);
+            ReiniciarEAtualizarCommand = new RelayCommand(_atualizacao.ReiniciarEAtualizar, () => IsAtualizacaoPronta);
+
             _sync = sync;
             _sync.StatusMudou += () => System.Windows.Application.Current?.Dispatcher.InvokeAsync(AtualizarConexao);
             SincronizarAgoraCommand = new RelayCommand(async () => await _sync.SincronizarAgoraAsync(),
@@ -95,6 +102,19 @@ namespace Busca_BT.ViewModels
             RaisePropertyChanged(nameof(IsSincronizando));
             RaisePropertyChanged(nameof(ConexaoTexto));
             RaisePropertyChanged(nameof(ConexaoDetalhe));
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        // ── Atualização do app (aviso na barra lateral) ───────────────────
+
+        public bool IsAtualizacaoPronta => _atualizacao.Estado == EstadoAtualizacao.Pronta;
+        public string VersaoTexto => $"Versão {_atualizacao.VersaoAtual}";
+        public string AtualizacaoTexto => $"Versão {_atualizacao.VersaoNova} pronta";
+
+        private void AtualizarAtualizacao()
+        {
+            RaisePropertyChanged(nameof(IsAtualizacaoPronta));
+            RaisePropertyChanged(nameof(AtualizacaoTexto));
             CommandManager.InvalidateRequerySuggested();
         }
 
