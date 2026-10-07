@@ -172,6 +172,14 @@
                                         <ItemsControl ItemsSource="{Binding Items}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
+                                                  <StackPanel>
+                                                    <!-- Faixa a cada LPN diferente: separa os blocos para quem digita o LPN à mão -->
+                                                    <Border Padding="12,5" Margin="0,6,0,0" BorderThickness="4,0,0,0"
+                                                            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                            Visibility="{Binding InicioDeLpn, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding LpnBlocoTexto}" FontWeight="Bold" FontSize="13"/>
+                                                    </Border>
                                                     <Border Padding="16,6" BorderThickness="0,0,0,1"
                                                             BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
                                                         <Border.Style>
@@ -203,7 +211,7 @@
                                                                        TextTrimming="CharacterEllipsis" Margin="0,0,12,0"
                                                                        ToolTip="{Binding DescricaoAnvisa}"/>
                                                             <TextBlock Grid.Column="3" Text="{Binding Lote}" VerticalAlignment="Center"/>
-                                                            <TextBlock Grid.Column="4" Text="{Binding Lpn}" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="4" Text="{Binding Lpn}" FontWeight="Bold" VerticalAlignment="Center"/>
                                                             <ui:Button Grid.Column="5" MinWidth="80"
                                                                        ToolTip="{Binding AbertaTexto}"
                                                                        Command="{Binding DataContext.OpenCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -238,6 +246,7 @@
                                                             </DockPanel>
                                                         </Grid>
                                                     </Border>
+                                                  </StackPanel>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>

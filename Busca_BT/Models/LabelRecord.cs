@@ -84,6 +84,37 @@ namespace Busca_BT.Models
         /// </summary>
         public IReadOnlyList<string> Pendencias { get; set; } = [];
 
+        // ── Bloco de LPN na Home (calculado pela invoice, não vem do banco) ──
+
+        /// <summary>
+        /// True no primeiro item de cada LPN diferente (na ordem exibida): a Home mostra
+        /// uma faixa com o LPN para separar visualmente os blocos.
+        /// </summary>
+        public bool InicioDeLpn
+        {
+            get => _inicioDeLpn;
+            set
+            {
+                if (_inicioDeLpn == value) return;
+                _inicioDeLpn = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InicioDeLpn)));
+            }
+        }
+        private bool _inicioDeLpn;
+
+        /// <summary>Texto da faixa do bloco: "LPN FL382157 · 4 itens".</summary>
+        public string LpnBlocoTexto
+        {
+            get => _lpnBlocoTexto;
+            set
+            {
+                if (_lpnBlocoTexto == value) return;
+                _lpnBlocoTexto = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LpnBlocoTexto)));
+            }
+        }
+        private string _lpnBlocoTexto = string.Empty;
+
         public bool TemPendencia => Pendencias.Count > 0;
         public string PendenciasTexto => string.Join("\n", Pendencias);
     }

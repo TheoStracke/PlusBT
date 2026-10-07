@@ -45,7 +45,8 @@ namespace Busca_BT.Services
 
             foreach (var grupo in records.GroupBy(r => r.Invoice, StringComparer.OrdinalIgnoreCase))
             {
-                var linhas = grupo.OrderBy(r => r.Item).ToList();
+                // Mesma ordem da Home: por LPN (decrescente), não pela coluna Item.
+                var linhas = LpnOrdem.Ordenar(grupo);
                 var caminho = Path.Combine(pasta, $"Invoice {NomeSeguro(grupo.Key)}.xlsx");
 
                 using var workbook = new XLWorkbook();
@@ -101,8 +102,16 @@ namespace Busca_BT.Services
 
             // ── Linhas ────────────────────────────────────────────────────
             var r = linhaCabecalho + 1;
+            var linhasInicioLpn = new List<int>();
+            LabelRecord? anterior = null;
+            var blocoPar = true;
             foreach (var l in linhas)
             {
+                // Cada LPN diferente começa um bloco novo (cor alternada e borda grossa acima).
+                var mudouLpn = LpnOrdem.MudouLpn(anterior, l);
+                if (mudouLpn && anterior is not null)
+                    blocoPar = !blocoPar;
+
                 ws.Cell(r, 1).Value = l.Item;
                 ws.Cell(r, 2).Value = l.Invoice;
                 ws.Cell(r, 3).Value = l.Codigo;
@@ -126,14 +135,20 @@ namespace Busca_BT.Services
                 foreach (var c in new[] { 2, 3, 6, 8, 9 })
                     ws.Cell(r, c).Style.NumberFormat.Format = "@";
 
-                if ((r - linhaCabecalho) % 2 == 0)
-                    ws.Range(r, 1, r, ultimaColuna).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F2F6FA"));
+                // Cor por bloco de LPN (não por linha): fica claro onde cada LPN começa e termina.
+                if (!blocoPar)
+                    ws.Range(r, 1, r, ultimaColuna).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E3ECF5"));
+                ws.Cell(r, 9).Style.Font.SetBold();
 
-                // Depois do zebrado, para o destaque não ser coberto.
+                // Depois da cor do bloco, para o destaque não ser coberto.
                 if (l.Validade is null)
                     ws.Cell(r, 7).Style.Font.SetFontColor(XLColor.FromHtml("#C00000")).Font.SetBold()
                         .Fill.SetBackgroundColor(XLColor.FromHtml("#FDE2E2"));
 
+                if (mudouLpn)
+                    linhasInicioLpn.Add(r);
+
+                anterior = l;
                 r++;
             }
 
@@ -142,6 +157,12 @@ namespace Busca_BT.Services
                 .Border.SetInsideBorder(XLBorderStyleValues.Thin)
                 .Border.SetOutsideBorderColor(XLColor.FromHtml("#BFBFBF"))
                 .Border.SetInsideBorderColor(XLColor.FromHtml("#BFBFBF"));
+            // Depois das bordas finas: linha grossa em cima de cada LPN novo (menos o primeiro,
+            // que já fica colado no cabeçalho).
+            foreach (var inicio in linhasInicioLpn.Skip(1))
+                ws.Range(inicio, 1, inicio, ultimaColuna).Style.Border.SetTopBorder(XLBorderStyleValues.Medium)
+                    .Border.SetTopBorderColor(XLColor.FromHtml("#1F4E79"));
+
             ws.Range(linhaCabecalho, 1, r - 1, 1).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
             ws.Range(linhaCabecalho, 5, r - 1, 5).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
             ws.Range(linhaCabecalho, 7, r - 1, 7).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);

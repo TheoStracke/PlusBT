@@ -17,7 +17,8 @@ namespace Busca_BT.ViewModels
         public InvoiceGroupViewModel(string invoice, IReadOnlyList<LabelRecord> labels)
         {
             Invoice = invoice;
-            _all = labels;
+            // Ordem por LPN (decrescente), não pela coluna Item: itens do mesmo LPN ficam juntos.
+            _all = LpnOrdem.Ordenar(labels);
             TotalEtiquetas = labels.Sum(l => l.QtdInvoice);
 
             // Quando um rótulo vira "Aberto", a barra de progresso é recalculada na hora.
@@ -82,7 +83,37 @@ namespace Busca_BT.ViewModels
                     Items.Add(l);
             }
 
+            MarcarBlocosDeLpn();
             return Items.Count > 0;
+        }
+
+        /// <summary>Marca o primeiro item de cada LPN (na ordem visível) para a Home desenhar a faixa.</summary>
+        private void MarcarBlocosDeLpn()
+        {
+            LabelRecord? anterior = null;
+            LabelRecord? inicio = null;
+            var qtd = 0;
+
+            foreach (var l in Items)
+            {
+                if (LpnOrdem.MudouLpn(anterior, l))
+                {
+                    FecharBloco(inicio, qtd);
+                    inicio = l;
+                    qtd = 0;
+                }
+                l.InicioDeLpn = ReferenceEquals(l, inicio);
+                qtd++;
+                anterior = l;
+            }
+            FecharBloco(inicio, qtd);
+
+            static void FecharBloco(LabelRecord? inicio, int qtd)
+            {
+                if (inicio is null) return;
+                var titulo = string.IsNullOrWhiteSpace(inicio.Lpn) ? "Sem LPN" : $"LPN {inicio.Lpn.Trim()}";
+                inicio.LpnBlocoTexto = $"{titulo}  ·  {Contagem.Itens(qtd)}";
+            }
         }
 
         private void OnLabelChanged(object? sender, PropertyChangedEventArgs e)

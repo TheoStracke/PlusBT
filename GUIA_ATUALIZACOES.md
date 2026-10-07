@@ -70,7 +70,7 @@ A partir daí, as próximas versões chegam sozinhas.
    ```
    Regra prática: **3.1.1** para correção · **3.2.0** para funcionalidade nova · **4.0.0** para mudança grande.
    O número **precisa ser maior** que o da última release. Com um número igual ou menor, os PCs não atualizam.
-3. Faça o commit.
+3. Faça o commit e o `git push` (a tag da release é criada no commit atual, que precisa estar no GitHub).
 4. No PowerShell, na raiz do repositório:
    ```powershell
    .\publicar.ps1
@@ -87,6 +87,9 @@ A partir daí, as próximas versões chegam sozinhas.
 > `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
 
 ### Testar antes de publicar (opcional)
+
+> Para ter uma versão **antiga** instalada e ver a atualização chegar, gere um Setup com um número menor numa pasta separada:
+> `.\publicar.ps1 -SoLocal -Versao 3.0.9 -Saida Releases-teste` → instale `Releases-teste\Busca_BT-win-Setup.exe`.
 
 Para ver a atualização funcionando sem mandar nada para os PCs:
 
