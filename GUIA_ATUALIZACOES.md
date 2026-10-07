@@ -48,7 +48,19 @@ O script precisa de permissão para criar releases no repositório. Os PCs da op
 
 > ⚠️ O token fica **só no `.env`**, que é ignorado pelo Git. **Nunca** coloque o token neste arquivo, no `.env.example` ou num commit. Se ele vazar, apague o token no GitHub e gere outro.
 
-### 2. Instalar a versão nova em cada PC
+### 2. Conexão padrão com o Supabase (já feito em 07/10/2026)
+
+O app instalado conecta sozinho no Supabase, sem ninguém digitar nada: o `publicar.ps1` embute no `.exe` a conexão do usuário **`plusbt_app`**, que tem acesso **só ao schema `plusbt`** (não enxerga `auth`, `storage` nem o resto do projeto). Ele lê do `.env`:
+
+```
+PLUSBT_APP_DB_USER=plusbt_app.<id-do-projeto>
+PLUSBT_APP_DB_PASSWORD=...
+```
+
+- O `.exe` fica público no GitHub Releases: quem extrair a senha de dentro dele consegue ler e alterar os dados do PlusBT. Foi uma escolha consciente pela praticidade. Se um dia isso incomodar, troque a senha (`alter role plusbt_app password '...';` no SQL Editor), atualize o `.env` e publique uma versão nova.
+- Prioridade da conexão em cada PC: **Configurações salvas** → `.env` (só no PC de desenvolvimento) → **conexão padrão embutida**. Se um PC insistir em não conectar, apague `%AppData%\BuscaBT\supabase.settings.json` nele.
+
+### 3. Instalar a versão nova em cada PC
 
 A versão **3.0.0**, instalada hoje nos PCs, é anterior a isso e **não procura atualizações**. Por isso, é preciso instalar à mão **uma última vez**:
 

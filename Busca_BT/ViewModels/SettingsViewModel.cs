@@ -126,7 +126,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         Port = current.Port.ToString();
         Database = current.Database;
         Username = current.Username;
-        Password = current.Password;
+        // A senha da conexão padrão (embutida no .exe) não é mostrada na tela.
+        Password = current.Embutida ? string.Empty : current.Password;
+        if (current.Embutida)
+            StatusText = "Usando a conexão padrão do PlusBT. Não é preciso preencher nada.";
     }
 
     private ConnectionSettings BuildSettings() => new()
@@ -135,7 +138,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         Port = int.TryParse(Port.Trim(), out var port) ? port : 5432,
         Database = Database.Trim(),
         Username = Username.Trim(),
-        Password = Password
+        // Senha em branco com o usuário da conexão padrão: usa a senha embutida.
+        Password = Password.Length == 0 && _store.Embutida is { } padrao
+                   && string.Equals(padrao.Username, Username.Trim(), StringComparison.Ordinal)
+            ? padrao.Password
+            : Password
     };
 
     [RelayCommand]

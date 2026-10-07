@@ -10,6 +10,8 @@
 .env
 .env.*
 !.env.example
+# Conexão padrão embutida no .exe (gerada pelo publicar.ps1 e apagada depois)
+Busca_BT/conexao.bin
 
 # Pacotes do Velopack gerados pelo publicar.ps1 (vão para o GitHub Releases, não para o Git)
 Releases/

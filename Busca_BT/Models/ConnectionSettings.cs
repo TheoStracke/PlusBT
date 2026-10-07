@@ -20,6 +20,9 @@ public sealed class ConnectionSettings
     public string Password { get; set; } = string.Empty;
     public int ConnectTimeoutSeconds { get; set; } = 15;
 
+    /// <summary>True quando veio da conexão padrão embutida no .exe (não é gravada em disco).</summary>
+    public bool Embutida { get; init; }
+
     public bool IsComplete =>
         !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(Username) && !string.IsNullOrEmpty(Password);
 

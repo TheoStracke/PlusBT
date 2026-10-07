@@ -39,6 +39,11 @@
     <EmbeddedResource Include="appsettings.json">
       <LogicalName>Busca_BT.appsettings.json</LogicalName>
     </EmbeddedResource>
+    <!-- Conexão padrão com o Supabase (usuário plusbt_app), gerada pelo publicar.ps1 a partir
+         do .env só durante o publish e apagada em seguida. Nunca vai para o Git. -->
+    <EmbeddedResource Include="conexao.bin" Condition="Exists('conexao.bin')">
+      <LogicalName>Busca_BT.conexao.bin</LogicalName>
+    </EmbeddedResource>
     <!-- Scripts do banco aplicados automaticamente ao iniciar (DatabaseInitializer). -->
     <EmbeddedResource Include="Data\Migrations\*.sql">
       <LogicalName>Busca_BT.Data.Migrations.%(Filename)%(Extension)</LogicalName>

@@ -1,5 +1,6 @@
 using Busca_BT.Models;
 using System.IO;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -8,6 +9,9 @@ namespace Busca_BT.Infrastructure;
 
 public interface IConnectionSettingsStore
 {
+    /// <summary>Conexão padrão embutida no .exe, se houver (null em builds sem ela).</summary>
+    ConnectionSettings? Embutida { get; }
+
     ConnectionSettings Load();
     void Save(ConnectionSettings settings);
 }
@@ -17,11 +21,21 @@ public interface IConnectionSettingsStore
 /// A senha é gravada criptografada com DPAPI (só o mesmo usuário do Windows, no mesmo
 /// PC, consegue ler). Se o arquivo ainda não existe, usa um .env (desenvolvimento:
 /// procurado na pasta do .exe e nas pastas acima) ou as variáveis de ambiente SUPABASE_DB_*.
+/// Sem nada disso (PC recém-instalado), usa a conexão padrão embutida no .exe pelo
+/// publicar.ps1 (usuário plusbt_app, com acesso só ao schema plusbt).
 /// </summary>
 public sealed class ConnectionSettingsStore : IConnectionSettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("PlusBT.Supabase");
+
+    // Chave do embaralhamento do conexao.bin (a mesma do publicar.ps1). Não é criptografia
+    // de verdade: só evita a senha aparecer em texto puro dentro do .exe.
+    private static readonly byte[] ChaveEmbutida = Encoding.UTF8.GetBytes("PlusBT.conexao.v1");
+
+    private static readonly Lazy<ConnectionSettings?> _embutida = new(LerEmbutida);
+
+    public ConnectionSettings? Embutida => _embutida.Value;
 
     private readonly string _filePath;
 
@@ -68,7 +82,8 @@ public sealed class ConnectionSettingsStore : IConnectionSettingsStore
             }
         }
 
-        return FromEnvironment();
+        var doAmbiente = FromEnvironment();
+        return doAmbiente.IsComplete ? doAmbiente : Embutida ?? doAmbiente;
     }
 
     public void Save(ConnectionSettings settings)
@@ -114,6 +129,41 @@ public sealed class ConnectionSettingsStore : IConnectionSettingsStore
         settings.Username = Get("SUPABASE_DB_USER") ?? settings.Username;
         settings.Password = Get("SUPABASE_DB_PASSWORD") ?? settings.Password;
         return settings;
+    }
+
+    private sealed record ConexaoEmbutida(string Host, int Port, string Database, string Username, string Password);
+
+    private static ConnectionSettings? LerEmbutida()
+    {
+        try
+        {
+            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Busca_BT.conexao.bin");
+            if (stream is null)
+                return null;
+
+            using var reader = new StreamReader(stream);
+            var bytes = Convert.FromBase64String(reader.ReadToEnd().Trim());
+            for (var i = 0; i < bytes.Length; i++)
+                bytes[i] ^= ChaveEmbutida[i % ChaveEmbutida.Length];
+
+            var c = JsonSerializer.Deserialize<ConexaoEmbutida>(bytes);
+            if (c is null)
+                return null;
+
+            return new ConnectionSettings
+            {
+                Host = c.Host,
+                Port = c.Port,
+                Database = c.Database,
+                Username = c.Username,
+                Password = c.Password,
+                Embutida = true
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>Lê o primeiro .env encontrado subindo a partir da pasta do .exe.</summary>

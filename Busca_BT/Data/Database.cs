@@ -68,8 +68,15 @@ public sealed partial class DatabaseInitializer(
         await conn.ExecuteAsync("select pg_advisory_lock(@Key);", new { Key = MigrationLockKey });
         try
         {
+            // "create schema if not exists" exige permissão no banco inteiro mesmo quando o
+            // schema já existe, e o usuário do app (plusbt_app) só tem acesso ao plusbt:
+            // só tenta criar se ainda não existir (primeira instalação, com o postgres).
+            var schemaExiste = await conn.ExecuteScalarAsync<bool>(
+                "select exists (select 1 from pg_namespace where nspname = 'plusbt');");
+            if (!schemaExiste)
+                await conn.ExecuteAsync("create schema plusbt;");
+
             await conn.ExecuteAsync("""
-                create schema if not exists plusbt;
                 create table if not exists plusbt.schema_versao (
                     versao      integer primary key,
                     aplicada_em timestamptz not null default now()

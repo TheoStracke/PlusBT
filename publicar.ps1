@@ -36,18 +36,55 @@ if (-not $versao) {
 if (-not $versao) { throw 'Não achei <Version> no Busca_BT.csproj.' }
 Write-Host "Versão $versao" -ForegroundColor Cyan
 
-$token = $env:GITHUB_TOKEN
 $envFile = Join-Path $raiz '.env'
-if (-not $token -and (Test-Path $envFile)) {
-    $linha = Get-Content $envFile | Where-Object { $_ -match '^\s*GITHUB_TOKEN\s*=' } | Select-Object -First 1
-    if ($linha) { $token = ($linha -split '=', 2)[1].Trim() }
+function LerEnv([string]$nome) {
+    $valor = [Environment]::GetEnvironmentVariable($nome)
+    if (-not $valor -and (Test-Path $envFile)) {
+        $linha = Get-Content $envFile | Where-Object { $_ -match "^\s*$nome\s*=" } | Select-Object -First 1
+        if ($linha) { $valor = ($linha -split '=', 2)[1].Trim() }
+    }
+    return $valor
 }
+
+$token = LerEnv 'GITHUB_TOKEN'
 if (-not $SoLocal -and -not $token) { throw 'Falta o GITHUB_TOKEN (variável de ambiente ou .env).' }
+
+# Conexão padrão embutida no .exe: o app instalado conecta no Supabase sem ninguém digitar
+# nada. Usa o plusbt_app (acesso só ao schema plusbt), nunca o postgres.
+$appUser = LerEnv 'PLUSBT_APP_DB_USER'
+$appSenha = LerEnv 'PLUSBT_APP_DB_PASSWORD'
+if (-not $appUser -or -not $appSenha) {
+    if (-not $SoLocal) { throw 'Falta PLUSBT_APP_DB_USER / PLUSBT_APP_DB_PASSWORD no .env.' }
+    Write-Host 'Sem PLUSBT_APP_DB_* no .env: o app gerado não terá a conexão padrão.' -ForegroundColor Yellow
+}
+$conexaoBin = Join-Path $raiz 'Busca_BT\conexao.bin'
 
 # 1. Publica o app (perfil FolderProfile: win-x64, autocontido, arquivo único).
 if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
-dotnet publish $projeto -c Release -p:PublishProfile=FolderProfile -p:PublishDir="$publish\" -p:Version=$versao
-if ($LASTEXITCODE -ne 0) { throw 'dotnet publish falhou.' }
+try {
+    if ($appUser -and $appSenha) {
+        $porta = LerEnv 'SUPABASE_DB_PORT'
+        $json = [ordered]@{
+            Host     = $(if ($h = LerEnv 'SUPABASE_DB_HOST') { $h } else { 'aws-0-sa-east-1.pooler.supabase.com' })
+            Port     = $(if ($porta) { [int]$porta } else { 5432 })
+            Database = $(if ($d = LerEnv 'SUPABASE_DB_NAME') { $d } else { 'postgres' })
+            Username = $appUser
+            Password = $appSenha
+        } | ConvertTo-Json -Compress
+        # Mesmo embaralhamento (XOR) que o ConnectionSettingsStore desfaz ao ler.
+        $chave = [Text.Encoding]::UTF8.GetBytes('PlusBT.conexao.v1')
+        $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+        for ($i = 0; $i -lt $bytes.Length; $i++) { $bytes[$i] = $bytes[$i] -bxor $chave[$i % $chave.Length] }
+        [IO.File]::WriteAllText($conexaoBin, [Convert]::ToBase64String($bytes))
+    }
+
+    dotnet publish $projeto -c Release -p:PublishProfile=FolderProfile -p:PublishDir="$publish\" -p:Version=$versao
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish falhou.' }
+}
+finally {
+    # Só existe durante o publish: não fica solto no repositório.
+    if (Test-Path $conexaoBin) { Remove-Item $conexaoBin -Force }
+}
 
 # 2. Baixa a última release para o vpk gerar o pacote delta (atualização menor).
 # A pasta é sempre gerada do zero: a release anterior vem do GitHub logo abaixo.
