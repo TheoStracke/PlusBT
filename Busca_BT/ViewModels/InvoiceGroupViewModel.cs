@@ -17,7 +17,7 @@ namespace Busca_BT.ViewModels
         public InvoiceGroupViewModel(string invoice, IReadOnlyList<LabelRecord> labels)
         {
             Invoice = invoice;
-            // Ordem por LPN (decrescente), não pela coluna Item: itens do mesmo LPN ficam juntos.
+            // Ordem por LPN (crescente), não pela coluna Item: itens do mesmo LPN ficam juntos.
             _all = LpnOrdem.Ordenar(labels);
             TotalEtiquetas = labels.Sum(l => l.QtdInvoice);
 

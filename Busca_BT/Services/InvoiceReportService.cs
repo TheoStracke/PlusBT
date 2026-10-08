@@ -45,7 +45,7 @@ namespace Busca_BT.Services
 
             foreach (var grupo in records.GroupBy(r => r.Invoice, StringComparer.OrdinalIgnoreCase))
             {
-                // Mesma ordem da Home: por LPN (decrescente), não pela coluna Item.
+                // Mesma ordem da Home: por LPN (crescente), não pela coluna Item.
                 var linhas = LpnOrdem.Ordenar(grupo);
                 var caminho = Path.Combine(pasta, $"Invoice {NomeSeguro(grupo.Key)}.xlsx");
 

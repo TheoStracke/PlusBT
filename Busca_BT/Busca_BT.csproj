@@ -15,7 +15,7 @@
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<!-- Versão do app. O publicar.ps1 lê daqui e gera a release do Velopack com ela:
 		     subir este número a cada versão nova que for para os PCs. -->
-		<Version>3.1.1</Version>
+		<Version>3.1.2</Version>
 		<!-- Main próprio (Program.cs): o Velopack precisa rodar antes do WPF. -->
 		<StartupObject>Busca_BT.Program</StartupObject>
 	</PropertyGroup>

@@ -3,16 +3,16 @@ using Busca_BT.Models;
 namespace Busca_BT.Infrastructure;
 
 /// <summary>
-/// Ordem dos itens dentro de uma invoice: por LPN, do maior para o menor, ignorando a
+/// Ordem dos itens dentro de uma invoice: por LPN, do menor para o maior, ignorando a
 /// coluna Item (1, 2, 3…) da planilha. Assim itens do mesmo LPN que vieram separados na
 /// planilha ficam juntos. Usada na Home e no relatório, para os dois mostrarem a mesma ordem.
 /// </summary>
 public static class LpnOrdem
 {
-    /// <summary>LPN decrescente (comparação natural: "CD10" vem antes de "CD9"); sem LPN no fim; empate pelo Item.</summary>
+    /// <summary>LPN crescente (comparação natural: "CD9" vem antes de "CD10"); sem LPN no fim; empate pelo Item.</summary>
     public static List<LabelRecord> Ordenar(IEnumerable<LabelRecord> itens) => itens
         .OrderBy(l => string.IsNullOrWhiteSpace(l.Lpn))
-        .ThenByDescending(l => l.Lpn.Trim(), ComparadorNatural.Instancia)
+        .ThenBy(l => l.Lpn.Trim(), ComparadorNatural.Instancia)
         .ThenBy(l => l.Item)
         .ToList();
 

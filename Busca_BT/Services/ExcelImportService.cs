@@ -1,4 +1,5 @@
 using Busca_BT.Data;
+using Busca_BT.Infrastructure;
 using Busca_BT.Models;
 using ClosedXML.Excel;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,9 @@ namespace Busca_BT.Services
         ILabelRepository repository,
         ILogger<ExcelImportService> logger) : IExcelImportService
     {
-        private const int HeaderRow = 1;
+        // O cabeçalho é procurado nas primeiras linhas: na planilha original ele está na
+        // linha 1; no relatório por invoice gerado pelo app, vem depois do título e do resumo.
+        private const int MaxLinhaCabecalho = 20;
 
         // Colunas obrigatórias: nome lógico do campo -> variações de cabeçalho aceitas
         // (cobre tanto o layout antigo quanto o novo layout com colunas em inglês).
@@ -80,16 +83,20 @@ namespace Busca_BT.Services
                 var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 1;
                 var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 1;
 
-                if (lastRow < 2)
-                    return ImportResult.Fail("Planilha sem dados (apenas cabeçalho ou vazia).");
-
-                var cols = ResolveHeaders(sheet, lastColumn, out var missingField, out var foundHeaders);
+                var headerRow = FindHeaderRow(sheet, lastRow, lastColumn);
+                var cols = ResolveHeaders(sheet, headerRow, lastColumn, out var missingField, out var foundHeaders);
                 if (missingField is not null)
                 {
                     return ImportResult.Fail(
                         $"Coluna obrigatória '{missingField}' não encontrada no cabeçalho da planilha. " +
                         $"Cabeçalhos encontrados: {string.Join(", ", foundHeaders)}");
                 }
+
+                if (lastRow <= headerRow)
+                    return ImportResult.Fail("Planilha sem dados (apenas cabeçalho ou vazia).");
+
+                // Relatório por invoice: o local fica no resumo acima da tabela ("Local: PALHOÇA").
+                var localDoResumo = cols.ContainsKey("Local") ? string.Empty : LerLocalDoResumo(sheet, headerRow);
 
                 var precisaEtiquetaCol = cols.TryGetValue("PrecisaEtiqueta", out var peCol) ? (int?)peCol : null;
                 LogHeaderResolved(logger, precisaEtiquetaCol.HasValue);
@@ -98,11 +105,11 @@ namespace Busca_BT.Services
                 var skipped = new List<SkippedRow>();
                 var totalRows = 0;
 
-                // Numeração do Item recalculada por invoice (1, 2, 3… em cada uma),
-                // ignorando a coluna Item da planilha.
+                // Posição da linha dentro da invoice (1, 2, 3…), ignorando a coluna Item da planilha:
+                // desempata itens do mesmo LPN e é renumerada na ordem por LPN mais abaixo.
                 var itemPorInvoice = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-                for (int row = 2; row <= lastRow; row++)
+                for (int row = headerRow + 1; row <= lastRow; row++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
@@ -123,7 +130,7 @@ namespace Busca_BT.Services
 
                     // Qualquer outro problema (data inválida, campo vazio…) NÃO tira a linha da
                     // fila: ela entra sinalizada com o aviso, para o usuário ver e corrigir.
-                    var record = ParseRow(sheet, row, cols);
+                    var record = ParseRow(sheet, row, cols, localDoResumo);
                     if (record.Avisos is not null)
                         LogRowWithWarnings(logger, row, record.Avisos);
 
@@ -136,6 +143,15 @@ namespace Busca_BT.Services
                 if (records.Count == 0)
                     return ImportResult.Fail(
                         "Nenhuma linha válida para importar. A fila atual foi mantida.", skipped);
+
+                // Renumera o Item na ordem em que a Home e o relatório mostram (por LPN),
+                // para a coluna Item aparecer 1, 2, 3… na tela.
+                foreach (var invoice in records.GroupBy(r => r.Invoice, StringComparer.OrdinalIgnoreCase))
+                {
+                    var n = 0;
+                    foreach (var r in LpnOrdem.Ordenar(invoice))
+                        r.Item = ++n;
+                }
 
                 // Importação + troca da fila numa transação só: se a conexão cair, nada muda.
                 await repository.ReplaceQueueAsync(filePath, total: totalRows, skipped: skipped.Count, records);
@@ -158,15 +174,47 @@ namespace Busca_BT.Services
 
         // ── Resolução de cabeçalho por nome ───────────────────────────────────
 
+        /// <summary>
+        /// Primeira linha (entre as iniciais) que tem todas as colunas obrigatórias. Sem
+        /// nenhuma, devolve a linha 1, para a mensagem de erro listar o cabeçalho de lá.
+        /// </summary>
+        private static int FindHeaderRow(IXLWorksheet sheet, int lastRow, int lastColumn)
+        {
+            for (int row = 1; row <= Math.Min(lastRow, MaxLinhaCabecalho); row++)
+            {
+                ResolveHeaders(sheet, row, lastColumn, out var missingField, out _);
+                if (missingField is null)
+                    return row;
+            }
+            return 1;
+        }
+
+        /// <summary>Valor ao lado de "Local:" nas linhas acima do cabeçalho (vazio se não houver).</summary>
+        private static string LerLocalDoResumo(IXLWorksheet sheet, int headerRow)
+        {
+            if (headerRow == 1)
+                return string.Empty;
+
+            foreach (var cell in sheet.Rows(1, headerRow - 1).CellsUsed())
+            {
+                if (NormalizeHeader(cell.GetValue<string>()) != "local:")
+                    continue;
+
+                var valor = GetString(sheet, cell.Address.RowNumber, cell.Address.ColumnNumber + 1);
+                return valor.Equals("Não informado", StringComparison.OrdinalIgnoreCase) ? string.Empty : valor;
+            }
+            return string.Empty;
+        }
+
         private static Dictionary<string, int> ResolveHeaders(
-            IXLWorksheet sheet, int lastColumn, out string? missingField, out IReadOnlyList<string> foundHeaders)
+            IXLWorksheet sheet, int headerRow, int lastColumn, out string? missingField, out IReadOnlyList<string> foundHeaders)
         {
             var headerLookup = new Dictionary<string, int>();
             var found = new List<string>();
 
             for (int col = 1; col <= lastColumn; col++)
             {
-                var raw = sheet.Cell(HeaderRow, col).GetValue<string>() ?? string.Empty;
+                var raw = sheet.Cell(headerRow, col).GetValue<string>() ?? string.Empty;
                 var normalized = NormalizeHeader(raw);
                 if (normalized.Length == 0)
                     continue;
@@ -229,7 +277,7 @@ namespace Busca_BT.Services
         /// Lê uma linha sempre produzindo um registro. Cada problema encontrado vira um
         /// aviso em <see cref="LabelRecord.Avisos"/> em vez de descartar a linha.
         /// </summary>
-        private static LabelRecord ParseRow(IXLWorksheet sheet, int rowNum, IReadOnlyDictionary<string, int> cols)
+        private static LabelRecord ParseRow(IXLWorksheet sheet, int rowNum, IReadOnlyDictionary<string, int> cols, string localPadrao)
         {
             var avisos = new List<string>();
 
@@ -270,7 +318,7 @@ namespace Busca_BT.Services
                 Lote = Texto("Lote", "Lote"),
                 RegistroAnvisa = Texto("RegistroAnvisa", "Registro ANVISA", obrigatorio: false),
                 Lpn = Texto("Lpn", "LPN"),
-                Local = NormalizarLocal(Texto("Local", "Local", obrigatorio: false)),
+                Local = NormalizarLocal(cols.ContainsKey("Local") ? Texto("Local", "Local", obrigatorio: false) : localPadrao),
                 LabelFilePath = null,
                 ImportedAt = DateTime.UtcNow
             };
@@ -294,7 +342,8 @@ namespace Busca_BT.Services
             else
             {
                 var raw = SafeRaw(sheet, rowNum, cols["Validade"]);
-                if (raw.Length == 0)
+                // "—" é como o relatório por invoice mostra a validade que veio vazia.
+                if (raw.Length == 0 || raw == "—")
                 {
                     avisos.Add("Validade vazia na planilha.");
                 }
