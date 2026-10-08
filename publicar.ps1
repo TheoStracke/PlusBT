@@ -100,8 +100,11 @@ if (-not $Versao) {
 }
 
 # 3. Empacota (o id Busca_BT é o mesmo das instalações já existentes).
+#    A imagem do instalador vem de Instalador\splash-instalador.png (gerada pelo
+#    Instalador\gerar-splash.ps1); a barra de progresso usa o azul do logo.
 vpk pack -u Busca_BT -v $versao -p $publish -e Busca_BT.exe -o $releases `
-    --packTitle 'PlusBT' -i (Join-Path $raiz 'Busca_BT\favicon.ico')
+    --packTitle 'PlusBT' --packAuthors 'TS Builds' -i (Join-Path $raiz 'Busca_BT\favicon.ico') `
+    --splashImage (Join-Path $raiz 'Instalador\splash-instalador.png') --splashProgressColor '#008DBC'
 if ($LASTEXITCODE -ne 0) { throw 'vpk pack falhou.' }
 
 if ($SoLocal) {
