@@ -138,8 +138,12 @@ namespace Busca_BT.ViewModels
         /// <summary>Etiquetas físicas da fila inteira: soma da Qtd Invoice.</summary>
         public int TotalEtiquetas => _allGroups.Sum(g => g.TotalEtiquetas);
 
-        /// <summary>Linha de resumo da Home: "7 invoices · 1.042 etiquetas no total".</summary>
-        public string ResumoFila => $"{Contagem.Invoices(_allGroups.Count)}  ·  {Contagem.Etiquetas(TotalEtiquetas)} no total";
+        /// <summary>Pacotes da fila inteira: LPNs diferentes.</summary>
+        public int TotalPacotes => LpnOrdem.ContarPacotes(_allRecords);
+
+        /// <summary>Linha de resumo da Home: "7 invoices · 1.042 etiquetas · 9 pacotes no total".</summary>
+        public string ResumoFila =>
+            $"{Contagem.Invoices(_allGroups.Count)}  ·  {Contagem.Etiquetas(TotalEtiquetas)}  ·  {Contagem.Pacotes(TotalPacotes)} no total";
 
         private ImportSummary? _summary;
         public ImportSummary? Summary

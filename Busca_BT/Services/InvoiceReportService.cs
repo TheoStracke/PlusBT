@@ -82,6 +82,8 @@ namespace Busca_BT.Services
             EscreverResumo(ws, 2, 4, "Folhas de espelho", folhas);
             // Etiquetas físicas = soma da Qtd Invoice (as folhas de espelho contam itens/linhas).
             EscreverResumo(ws, 2, 6, "Etiquetas", linhas.Sum(l => l.QtdInvoice));
+            // Pacotes = LPNs diferentes da invoice.
+            EscreverResumo(ws, 2, 8, "Pacotes", LpnOrdem.ContarPacotes(linhas));
 
             var rodape = ws.Range(3, 1, 3, ultimaColuna).Merge();
             rodape.Value = $"Planilha de origem: {origem}   ·   Gerado em {geradoEm:dd/MM/yyyy HH:mm}";

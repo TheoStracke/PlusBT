@@ -20,6 +20,7 @@ namespace Busca_BT.ViewModels
             // Ordem por LPN (crescente), não pela coluna Item: itens do mesmo LPN ficam juntos.
             _all = LpnOrdem.Ordenar(labels);
             TotalEtiquetas = labels.Sum(l => l.QtdInvoice);
+            TotalPacotes = LpnOrdem.ContarPacotes(labels);
 
             // Quando um rótulo vira "Aberto", a barra de progresso é recalculada na hora.
             foreach (var label in _all)
@@ -37,6 +38,8 @@ namespace Busca_BT.ViewModels
         public int Total => _all.Count;
         /// <summary>Etiquetas físicas a imprimir: soma da Qtd Invoice dos itens.</summary>
         public int TotalEtiquetas { get; }
+        /// <summary>Pacotes da invoice: LPNs diferentes.</summary>
+        public int TotalPacotes { get; }
         public int Abertas => _all.Count(l => l.FoiAberta);
 
         public double Progresso => Total == 0 ? 0 : Abertas * 100.0 / Total;
@@ -48,7 +51,7 @@ namespace Busca_BT.ViewModels
         public int Pendencias => _all.Count(l => l.TemPendencia);
         public bool HasPendencias => Pendencias > 0;
         public string PendenciasTexto => Pendencias == 1 ? "1 com pendência" : $"{Pendencias} com pendência";
-        public string ResumoTexto => $"{Contagem.Itens(Total)}  ·  {Contagem.Etiquetas(TotalEtiquetas)}";
+        public string ResumoTexto => $"{Contagem.Itens(Total)}  ·  {Contagem.Etiquetas(TotalEtiquetas)}  ·  {Contagem.Pacotes(TotalPacotes)}";
 
         private bool _isExpanded;
         public bool IsExpanded

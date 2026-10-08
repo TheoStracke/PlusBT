@@ -12,5 +12,6 @@ public static class Contagem
 
     public static string Etiquetas(int n) => Texto(n, "etiqueta", "etiquetas");
     public static string Itens(int n) => Texto(n, "item", "itens");
+    public static string Pacotes(int n) => Texto(n, "pacote", "pacotes");
     public static string Invoices(int n) => Texto(n, "invoice", "invoices");
 }

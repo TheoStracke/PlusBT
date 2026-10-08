@@ -4,9 +4,10 @@ using System.IO;
 namespace Busca_BT.Models;
 
 /// <summary>Grupo de etiquetas importadas de uma mesma invoice (exibido no modal de resumo).</summary>
-public sealed record ImportedInvoiceGroup(string Invoice, int Quantidade, int Etiquetas)
+public sealed record ImportedInvoiceGroup(string Invoice, int Quantidade, int Etiquetas, int Pacotes)
 {
-    public string QuantidadeTexto => $"{Contagem.Itens(Quantidade)}  ·  {Contagem.Etiquetas(Etiquetas)}";
+    public string QuantidadeTexto =>
+        $"{Contagem.Itens(Quantidade)}  ·  {Contagem.Etiquetas(Etiquetas)}  ·  {Contagem.Pacotes(Pacotes)}";
 }
 
 /// <summary>Item da fila com pendência, exibido no modal de resumo.</summary>
@@ -39,7 +40,10 @@ public sealed class ImportSummary
 
     public string ImportadosTexto =>
         $"{Contagem.Texto(TotalImportados, "item importado", "itens importados")}  ·  " +
-        Contagem.Etiquetas(Importados.Sum(g => g.Etiquetas));
+        $"{Contagem.Etiquetas(Importados.Sum(g => g.Etiquetas))}  ·  {Contagem.Pacotes(TotalPacotes)}";
+
+    /// <summary>LPNs diferentes entre todos os itens importados.</summary>
+    public int TotalPacotes { get; init; }
 
     public string NaoImportadosTexto => NaoImportados.Count == 1
         ? "1 linha não importada"
@@ -77,8 +81,9 @@ public sealed class ImportSummary
         ErrorMessage = result.ErrorMessage,
         Importados = result.Imported
             .GroupBy(l => l.Invoice)
-            .Select(g => new ImportedInvoiceGroup(g.Key, g.Count(), g.Sum(l => l.QtdInvoice)))
+            .Select(g => new ImportedInvoiceGroup(g.Key, g.Count(), g.Sum(l => l.QtdInvoice), LpnOrdem.ContarPacotes(g)))
             .ToList(),
+        TotalPacotes = LpnOrdem.ContarPacotes(result.Imported),
         NaoImportados = result.Skipped
     };
 

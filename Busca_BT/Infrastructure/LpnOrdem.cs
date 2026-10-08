@@ -16,6 +16,16 @@ public static class LpnOrdem
         .ThenBy(l => l.Item)
         .ToList();
 
+    /// <summary>
+    /// Pacotes = LPNs diferentes (sem diferenciar maiúsculas nem espaços nas pontas).
+    /// Itens sem LPN não contam como pacote.
+    /// </summary>
+    public static int ContarPacotes(IEnumerable<LabelRecord> itens) => itens
+        .Select(l => l.Lpn.Trim())
+        .Where(lpn => lpn.Length > 0)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Count();
+
     /// <summary>True quando o item começa um bloco de LPN diferente do item anterior.</summary>
     public static bool MudouLpn(LabelRecord? anterior, LabelRecord atual) =>
         anterior is null || !string.Equals(anterior.Lpn.Trim(), atual.Lpn.Trim(), StringComparison.OrdinalIgnoreCase);
